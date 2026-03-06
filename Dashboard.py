@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 import gspread
 from google.oauth2.service_account import Credentials
 import os
-import json
+import json  # <--- ESSA LINHA É OBRIGATÓRIA PARA A NUVEM!
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Produtividade Inbound | CD2900", page_icon="📊", layout="wide")
@@ -151,7 +151,6 @@ if not df.empty:
         st.plotly_chart(fig, use_container_width=True)
 
     with col_graf2:
-        # 🚀 NOVO: Gráfico de Pizza por Tipo de Área
         st.subheader("📍 Armazenagem por Tipo de Área")
         
         df_pizza = df_final.groupby('Tipo_Area')['NU_ETIQUETA'].nunique().reset_index()
@@ -216,6 +215,4 @@ if not df.empty:
         st.dataframe(ranking.sort_values('Etiquetas', ascending=False), use_container_width=True, hide_index=True)
 
 else:
-
     st.error("Não há dados formatados corretamente. Verifique se a planilha tem datas válidas.")
-
