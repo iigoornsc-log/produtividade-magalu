@@ -154,7 +154,7 @@ if not df_bruto.empty:
     turno_sel = st.sidebar.multiselect("⏱️ Turno", df['Turno'].unique(), default=df['Turno'].unique())
     df = df[df['Turno'].isin(turno_sel)]
 
-    st.markdown("<p class='header-title'>🗼 TORRE DE CONTROLE INBOUND (WMS)</p>", unsafe_allow_html=True)
+    st.markdown("<p class='header-title'>🌐 TORRE DE CONTROLE INBOUND (WMS)</p>", unsafe_allow_html=True)
     st.caption("Acompanhamento de Produtividade | Conferência e Armazenagem")
     st.markdown("---")
 
@@ -304,5 +304,6 @@ if not df_bruto.empty:
 
 else:
     st.error("⚠️ Não foi possível carregar os dados. Verifique a conexão com o Google Sheets.")
+
 
 
