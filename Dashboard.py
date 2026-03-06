@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 import gspread
 from google.oauth2.service_account import Credentials
 import os
+import json
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Produtividade Inbound | CD2900", page_icon="📊", layout="wide")
@@ -217,3 +218,4 @@ if not df.empty:
 else:
 
     st.error("Não há dados formatados corretamente. Verifique se a planilha tem datas válidas.")
+
