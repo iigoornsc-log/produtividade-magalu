@@ -8,7 +8,7 @@ import os
 import json
 
 # --- CONFIGURAÇÃO DA PÁGINA (CLASSE AAA+) ---
-st.set_page_config(page_title="Torre de Controle Inbound | Magalu", page_icon="⚡️", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Torre de Controle Inbound | Magalu", page_icon="🗼", layout="wide", initial_sidebar_state="expanded")
 
 # --- ESTILIZAÇÃO PREMIUM CSS ---
 st.markdown("""
@@ -40,6 +40,44 @@ def exibir_kpi(titulo, valor, subtitulo="", cor="#0086FF"):
     </div>
     """, unsafe_allow_html=True)
 
+# --- POP-UP DETALHADO (O SEGREDO AAA+) ---
+@st.dialog("🔍 RAIO-X DA HORA: DETALHAMENTO DE ARMAZENAGEM", width="large")
+def popup_detalhe_hora(hora, df_filtrado):
+    df_hora = df_filtrado[df_filtrado['Hora_Armz'] == hora]
+    
+    if df_hora.empty:
+        st.warning(f"Nenhuma movimentação de armazenagem registrada às {hora}.")
+        return
+        
+    st.markdown(f"### ⏱️ Resumo Operacional das **{hora}**")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Etiquetas Guardadas", df_hora['NU_ETIQUETA'].nunique())
+    c2.metric("Peças Físicas", f"{df_hora['QT_PRODUTO'].sum():,.0f}".replace(',','.'))
+    c3.metric("Maior Operador (MVP)", df_hora['OPERADOR'].value_counts().index[0])
+    c4.metric("Agendas Processadas", df_hora['AGENDA'].nunique())
+    
+    st.markdown("---")
+    
+    colA, colB = st.columns(2)
+    with colA:
+        st.markdown("#### 🏆 Corrida dos Operadores na Hora")
+        top_ops = df_hora.groupby('OPERADOR')['NU_ETIQUETA'].nunique().reset_index().sort_values('NU_ETIQUETA', ascending=False)
+        top_ops.columns = ['Operador', 'Etiquetas']
+        st.dataframe(top_ops, use_container_width=True, hide_index=True)
+        
+    with colB:
+        st.markdown("#### 🏭 Fornecedores Armazenados na Hora")
+        top_forn = df_hora.groupby('FORNECEDOR')['NU_ETIQUETA'].nunique().reset_index().sort_values('NU_ETIQUETA', ascending=False)
+        top_forn.columns = ['Fornecedor', 'Etiquetas']
+        st.dataframe(top_forn, use_container_width=True, hide_index=True)
+        
+    st.markdown("#### 📋 Lista Cirúrgica de Etiquetas (LPNs)")
+    df_lista = df_hora[['AGENDA', 'FORNECEDOR', 'NU_ETIQUETA', 'QT_PRODUTO', 'OPERADOR', 'Tipo_Area', 'Tempo_Espera_Minutos']].copy()
+    df_lista['Tempo_Espera_Minutos'] = df_lista['Tempo_Espera_Minutos'].apply(lambda x: f"{int(x//60)}h {int(x%60)}m" if x > 0 else "0m")
+    df_lista.columns = ['Agenda', 'Fornecedor', 'Etiqueta', 'Qtd Peças', 'Operador', 'Área Destino', 'SLA Doca']
+    st.dataframe(df_lista, use_container_width=True, hide_index=True)
+
+
 # --- MOTOR DE EXTRAÇÃO DE DADOS ---
 @st.cache_data(ttl=300)
 def carregar_dados_torre_controle():
@@ -54,29 +92,23 @@ def carregar_dados_torre_controle():
         
         df = pd.DataFrame(data[1:], columns=data[0])
         
-        # 1. Tratamento Básico
         df['QT_PRODUTO'] = pd.to_numeric(df['QT_PRODUTO'], errors='coerce').fillna(0)
         df['DT_CONFERENCIA'] = pd.to_datetime(df['DT_CONFERENCIA'], errors='coerce') 
         df['DT_ARMAZENAGEM'] = pd.to_datetime(df['DT_ARMAZENAGEM'], dayfirst=True, errors='coerce')
         
-        # 2. Mapeamento Cego de Colunas
-        df['AGENDA'] = df.iloc[:, 3].astype(str).str.strip().str.upper() # Coluna D
-        df['FORNECEDOR'] = df.iloc[:, 9].astype(str).str.strip().str.upper() # Coluna J
+        df['AGENDA'] = df.iloc[:, 3].astype(str).str.strip().str.upper()
+        df['FORNECEDOR'] = df.iloc[:, 9].astype(str).str.strip().str.upper()
         
-        # Conferente
         cols = df.columns.str.upper()
         if 'CONFERENTE' in cols: df['CONFERENTE'] = df['CONFERENTE']
         elif 'USUARIO_CONFERENCIA' in cols: df['CONFERENTE'] = df['USUARIO_CONFERENCIA']
         else: df['CONFERENTE'] = "N/D"
 
-        # 3. Engenharia de Tempo e SLA
         df['Data_Ref'] = df['DT_ARMAZENAGEM'].dt.date
-        df['Data_Conf_Ref'] = df['DT_CONFERENCIA'].dt.date
         df['Hora_Conf'] = df['DT_CONFERENCIA'].dt.strftime('%H:00')
         df['Hora_Armz'] = df['DT_ARMAZENAGEM'].dt.strftime('%H:00')
         df['Tempo_Espera_Minutos'] = (df['DT_ARMAZENAGEM'] - df['DT_CONFERENCIA']).dt.total_seconds() / 60.0
         
-        # 4. Detecção de Turno
         def definir_turno(hora):
             if pd.isna(hora): return 'Indefinido'
             h = hora.hour
@@ -85,7 +117,6 @@ def carregar_dados_torre_controle():
             else: return '3º Turno'
         df['Turno'] = df['DT_ARMAZENAGEM'].apply(definir_turno)
         
-        # 5. Classificação de Área Física
         nome_coluna_f = df.columns[5]
         def mapear_area(endereco):
             end_str = str(endereco).strip().upper()
@@ -109,9 +140,8 @@ if not df_bruto.empty:
     # PAINEL DE FILTROS SUPERIORES (SIDEBAR)
     # =========================================================================
     st.sidebar.image("https://magalog.com.br/opengraph-image.jpg?fdd536e7d35ec9da", width=220)
-    st.sidebar.markdown("<h2 style='color: #0086FF;'>🎛️ Filtros </h2>", unsafe_allow_html=True)
+    st.sidebar.markdown("<h2 style='color: #0086FF;'>🎛️ Filtros Globais</h2>", unsafe_allow_html=True)
     
-    # Filtro de Período
     data_min = df_bruto['Data_Ref'].min()
     data_max = df_bruto['Data_Ref'].max()
     datas_sel = st.sidebar.date_input("🗓️ Período de Análise", [data_max, data_max], min_value=data_min, max_value=data_max)
@@ -139,7 +169,6 @@ if not df_bruto.empty:
     with tab1:
         st.subheader("🔎 Produtividade de Conferência (Agendas e Fornecedores)")
         
-        # MOTOR DE AGENDAS: Descobre o tempo gasto em cada caminhão/agenda
         df_agendas = df.groupby('AGENDA').agg(
             Inicio_Conf=('DT_CONFERENCIA', 'min'),
             Fim_Conf=('DT_CONFERENCIA', 'max'),
@@ -149,7 +178,6 @@ if not df_bruto.empty:
             Total_Etiquetas=('NU_ETIQUETA', 'nunique')
         ).reset_index()
         
-        # Calcula a Duração Real da Agenda
         df_agendas['Tempo_Gasto_Minutos'] = (df_agendas['Fim_Conf'] - df_agendas['Inicio_Conf']).dt.total_seconds() / 60.0
         df_agendas['Tempo_Gasto_Minutos'] = df_agendas['Tempo_Gasto_Minutos'].apply(lambda x: x if x > 1 else 1.0)
         
@@ -209,14 +237,20 @@ if not df_bruto.empty:
         with c1: exibir_kpi("Agendas Armazenadas", qtd_agendas_op, "Cargas movimentadas", "#0086FF")
         with c2: exibir_kpi("Etiquetas Guardadas", f"{qtd_etiquetas_op:,.0f}".replace(',','.'), "Pallets armazenados", "#9B59B6")
         with c3: exibir_kpi("Peças Físicas", f"{qtd_pecas_op:,.0f}".replace(',','.'), "Volume total", "#4CAF50")
-        with c4: exibir_kpi("Tpm Médio Doca", txt_sla_op, "Tempo médio do pallet em stage", "#F44336")
+        with c4: exibir_kpi("SLA Médio Doca", txt_sla_op, "Tempo médio esperando", "#F44336")
 
         st.markdown("---")
 
-        col_graf1, col_graf2 = st.columns([6, 4])
+        col_graf1, col_graf2 = st.columns([7, 3])
         
         with col_graf1:
-            st.subheader("⏱️ Gargalo: Conferência vs Armazenagem (Hora a Hora)")
+            col_titulo, col_manual = st.columns([7, 3])
+            with col_titulo:
+                st.subheader("⏱️ Gargalo: Conferência vs Armazenagem (Hora a Hora)")
+            with col_manual:
+                horas_disp = ["Selecione..."] + sorted(df_op['Hora_Armz'].dropna().unique().tolist())
+                hora_manual = st.selectbox("Abrir Raio-X da Hora:", horas_disp, help="Ou apenas clique direto na barra do gráfico!")
+            
             df_meta = df_op.groupby('Hora_Conf')['NU_ETIQUETA'].nunique().reset_index()
             df_meta.columns = ['Hora', 'Liberado_Doca']
             df_real = df_op.groupby('Hora_Armz')['NU_ETIQUETA'].nunique().reset_index()
@@ -225,12 +259,24 @@ if not df_bruto.empty:
             
             fig_fluxo = go.Figure()
             fig_fluxo.add_trace(go.Bar(x=df_fluxo['Hora'], y=df_fluxo['Guardado_Rua'], name='Guardado (Operador)', marker_color='#3498DB', text=df_fluxo['Guardado_Rua'], textposition='auto', textfont=dict(color='white', weight='bold')))
-            fig_fluxo.add_trace(go.Scatter(x=df_fluxo['Hora'], y=df_fluxo['Liberado_Doca'], name='Etiquetas Conferidas H', mode='lines+markers+text', text=df_fluxo['Liberado_Doca'], textposition='top center', line=dict(color='#E74C3C', width=3, dash='dot'), textfont=dict(color='#E74C3C', weight='bold')))
-            fig_fluxo.update_layout(plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", y=1.15))
-            st.plotly_chart(fig_fluxo, use_container_width=True)
+            fig_fluxo.add_trace(go.Scatter(x=df_fluxo['Hora'], y=df_fluxo['Liberado_Doca'], name='Liberado (Conferente)', mode='lines+markers+text', text=df_fluxo['Liberado_Doca'], textposition='top center', line=dict(color='#E74C3C', width=3, dash='dot'), textfont=dict(color='#E74C3C', weight='bold')))
+            fig_fluxo.update_layout(plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", y=1.15), clickmode='event+select')
+            
+            # Gráfico com o sensor de cliques ativado
+            evento_grafico = st.plotly_chart(fig_fluxo, use_container_width=True, on_select="rerun")
+            
+            # Lógica de Captura do Clique ou do Selectbox
+            if hora_manual != "Selecione...":
+                popup_detalhe_hora(hora_manual, df_op)
+            elif isinstance(evento_grafico, dict) and "selection" in evento_grafico:
+                pontos = evento_grafico["selection"].get("points", [])
+                if pontos:
+                    hora_clicada = pontos[0].get("x")
+                    if hora_clicada:
+                        popup_detalhe_hora(hora_clicada, df_op)
 
         with col_graf2:
-            st.subheader("📍 Armazenagem por Tipo de Área")
+            st.subheader("📍 Áreas Armazenadas")
             df_pizza = df_op.groupby('Tipo_Area')['NU_ETIQUETA'].nunique().reset_index()
             df_pizza.columns = ['Tipo de Área', 'Etiquetas Guardadas']
             
@@ -258,4 +304,3 @@ if not df_bruto.empty:
 
 else:
     st.error("⚠️ Não foi possível carregar os dados. Verifique a conexão com o Google Sheets.")
-
