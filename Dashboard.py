@@ -155,7 +155,7 @@ if not df_bruto.empty:
     df = df[df['Turno'].isin(turno_sel)]
 
     st.markdown("<p class='header-title'>🌐 TORRE DE CONTROLE INBOUND (WMS)</p>", unsafe_allow_html=True)
-    st.caption("Acompanhamento de Produtividade | Conferência e Armazenagem")
+    st.caption("Acompanhamento de dade | Conferência e Armazenagem")
     st.markdown("---")
 
     # =========================================================================
@@ -167,7 +167,7 @@ if not df_bruto.empty:
     # ABA 1: RECEBIMENTO (CONFERENTES E FORNECEDORES)
     # -------------------------------------------------------------------------
     with tab1:
-        st.subheader("🔎 Produtividade de Conferência (Agendas e Fornecedores)")
+        st.subheader("🔎 dade de Conferência (Agendas e Fornecedores)")
         
         df_agendas = df.groupby('AGENDA').agg(
             Inicio_Conf=('DT_CONFERENCIA', 'min'),
@@ -302,9 +302,36 @@ if not df_bruto.empty:
             rank_op = rank_op[['Operador', 'Etiquetas Guardadas', 'Peças Físicas', 'Peças/Etq', 'Horas Trabalhadas', 'Etq/Hora', 'SLA Médio de Doca (Min)']]
             st.dataframe(rank_op.sort_values('Etiquetas Guardadas', ascending=False), use_container_width=True, hide_index=True)
 
+            # =====================================================================
+            # NOVO GRÁFICO: COMPARATIVO HORA A HORA OPERADOR VS OPERADOR
+            # =====================================================================
+            st.markdown("---")
+            st.subheader("📈 Comparativo Hora a Hora: Operador vs Operador")
+            
+            df_comp_operadores = df.groupby(['Hora_Armz', 'OPERADOR'])['NU_ETIQUETA'].nunique().reset_index()
+            df_comp_operadores.columns = ['Hora', 'Operador', 'Etiquetas Guardadas']
+            
+            df_comp_operadores = df_comp_operadores.sort_values('Hora')
+            
+            fig_comp = px.line(
+                df_comp_operadores, 
+                x='Hora', 
+                y='Etiquetas Guardadas', 
+                color='Operador', 
+                markers=True
+            )
+            
+            fig_comp.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)', 
+                paper_bgcolor='rgba(0,0,0,0)',
+                xaxis_title="Hora da Armazenagem",
+                yaxis_title="Etiquetas Armazenadas",
+                legend_title="Operadores",
+                hovermode="x unified"
+            )
+            
+            st.plotly_chart(fig_comp, use_container_width=True)
+
+
 else:
     st.error("⚠️ Não foi possível carregar os dados. Verifique a conexão com o Google Sheets.")
-
-
-
-
