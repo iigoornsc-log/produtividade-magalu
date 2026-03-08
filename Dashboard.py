@@ -121,7 +121,7 @@ if not df_bruto.empty:
 
     fig_fluxo = go.Figure()
     fig_fluxo.add_trace(go.Bar(x=df_fluxo['Hora'], y=df_fluxo['Armazenados'], name='Armazenados (Produção)', marker_color='#0086FF'))
-    fig_fluxo.add_trace(go.Bar(x=df_fluxo['Hora'], y=df_fluxo['Conferidos'], name='Conferidos (Demanda)', marker_color='#E9ECEF'))
+    fig_fluxo.add_trace(go.Bar(x=df_fluxo['Hora'], y=df_fluxo['Conferidos'], name='Conferidos (Demanda)', marker_color='#9d26ff'))
     fig_fluxo.add_trace(go.Scatter(x=df_fluxo['Hora'], y=df_fluxo['Pendências'], name='Pendências (Doca)', mode='lines+markers', line=dict(color='#E74C3C', width=3), yaxis='y2'))
     
     fig_fluxo.update_layout(
@@ -154,3 +154,4 @@ if not df_bruto.empty:
 
 else:
     st.error("⚠️ Dados não encontrados para a data selecionada.")
+
