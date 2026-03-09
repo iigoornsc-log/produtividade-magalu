@@ -137,10 +137,14 @@ if not df_bruto.empty:
         line=dict(color='#E74C3C', width=3), yaxis='y2', text=df_fluxo['Pendências'], textposition='top center', textfont=dict(color='#E74C3C', weight='bold')
     ))
     
+    # Calcula o teto do gráfico de forma segura para evitar travamentos
+    max_y = df_fluxo[['Armazenados', 'Conferidos']].max().max() if not df_fluxo.empty else 10
+    teto_grafico = max_y * 1.2 if max_y > 0 else 10
+
     fig_fluxo.update_layout(
         plot_bgcolor='rgba(0,0,0,0)', barmode='group',
         legend=dict(orientation="h", y=1.15, x=0.5, xanchor='center'),
-        yaxis=dict(title="Qtd Etiquetas", showgrid=True, gridcolor='#F1F3F5', range=[0, max(df_fluxo[['Armazenados', 'Conferidos']].max()) * 1.2]), # Espaço extra pro texto não cortar
+        yaxis=dict(title="Qtd Etiquetas", showgrid=True, gridcolor='#F1F3F5', range=[0, teto_grafico]), # Usando a variável segura aqui
         yaxis2=dict(title="Pendências Acumuladas", overlaying='y', side='right', showgrid=False),
         hovermode="x unified"
     )
@@ -167,3 +171,4 @@ if not df_bruto.empty:
 
 else:
     st.error("⚠️ Dados não encontrados para a data selecionada.")
+
