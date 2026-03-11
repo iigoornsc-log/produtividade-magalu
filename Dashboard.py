@@ -123,8 +123,8 @@ if not df_bruto.empty:
     sla_medio = espera_valida.mean() if not espera_valida.empty else 0
     txt_sla = f"{int(sla_medio // 60)}h {int(sla_medio % 60)}m"
     
-    with c1: exibir_kpi("Armazenados (Líquido)", f"{qtd_etiquetas:,.0f}".replace(',','.'), "Referente à entrada de hoje", "#0086FF")
-    with c2: exibir_kpi("Peças Processadas", f"{qtd_pecas:,.0f}".replace(',','.'), "Volume físico hoje", "#9B59B6")
+    with c1: exibir_kpi("Armazenados", f"{qtd_etiquetas:,.0f}".replace(',','.'), "Referente à entrada de hoje", "#0086FF")
+    with c2: exibir_kpi("Peças Conferidas", f"{qtd_pecas:,.0f}".replace(',','.'), "Volume físico hoje", "#9B59B6")
     with c3: exibir_kpi("SLA Médio Doca", txt_sla, "Tempo em espera", "#F44336" if sla_medio > 120 else "#4CAF50")
     with c4: exibir_kpi("Operador Atual", op_sel if op_sel != "Equipe Total" else "Time Completo", "Filtro ativo", "#FF9800")
 
@@ -200,5 +200,6 @@ if not df_bruto.empty:
 
 else:
     st.error("⚠️ Dados não encontrados para a data selecionada.")
+
 
 
