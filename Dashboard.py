@@ -90,11 +90,16 @@ if not df_bruto.empty:
     data_sel = st.sidebar.date_input("🗓️ Data da Operação", data_max)
     
     # -------------------------------------------------------------------------
-    # A MÁGICA DO FILTRO ESTRITO ACONTECE AQUI
+    # A MÁGICA DO FILTRO DUPLO ACONTECE AQUI
     # -------------------------------------------------------------------------
-    # Pegamos pro dia selecionado apenas o que TEM a data de hoje na conferência OU na armazenagem.
-    df_dia = df_bruto[(df_bruto['Data_Armz'] == data_sel) | (df_bruto['Data_Conf'] == data_sel)].copy()
+    # REGRA: Só aceitamos o que foi CONFERIDO no dia selecionado.
+    # Se foi conferido ontem e armazenado hoje, ignoramos.
+    # Se foi conferido hoje e armazenado hoje, entra.
+    # Se foi conferido hoje e AINDA não foi armazenado, entra (vira pendência).
     
+    df_dia = df_bruto[df_bruto['Data_Conf'] == data_sel].copy()
+    
+    # Tratando para não aparecer "nan" na lista de operadores
     operadores_validos = [op for op in df_dia['OPERADOR'].unique() if pd.notna(op) and str(op).strip() != '']
     opcoes_ops = ["Equipe Total"] + sorted(operadores_validos)
     op_sel = st.sidebar.selectbox("👤 Filtrar Operador", opcoes_ops)
@@ -103,11 +108,12 @@ if not df_bruto.empty:
 
     # CABEÇALHO
     st.title(f"🚀 Gestão de Produtividade | {data_sel.strftime('%d/%m/%Y')}")
-    st.caption("Fluxo de Doca: Conferidos vs Armazenados e Pendências Acumuladas.")
+    st.caption("Visão Pura: Somente etiquetas que deram entrada na doca (Conferência) no dia selecionado.")
     
     # BLOCO 1: KPIs
     c1, c2, c3, c4 = st.columns(4)
-    # KPI focado apenas no que foi armazenado no dia selecionado
+    
+    # O KPI agora reflete a REGRA PURA
     df_armazenado_hoje = df[df['Data_Armz'] == data_sel]
     
     qtd_etiquetas = df_armazenado_hoje['NU_ETIQUETA'].nunique()
@@ -117,7 +123,7 @@ if not df_bruto.empty:
     sla_medio = espera_valida.mean() if not espera_valida.empty else 0
     txt_sla = f"{int(sla_medio // 60)}h {int(sla_medio % 60)}m"
     
-    with c1: exibir_kpi("Total Armazenados", f"{qtd_etiquetas:,.0f}".replace(',','.'), "Etiquetas bipadas hoje", "#0086FF")
+    with c1: exibir_kpi("Armazenados (Líquido)", f"{qtd_etiquetas:,.0f}".replace(',','.'), "Referente à entrada de hoje", "#0086FF")
     with c2: exibir_kpi("Peças Processadas", f"{qtd_pecas:,.0f}".replace(',','.'), "Volume físico hoje", "#9B59B6")
     with c3: exibir_kpi("SLA Médio Doca", txt_sla, "Tempo em espera", "#F44336" if sla_medio > 120 else "#4CAF50")
     with c4: exibir_kpi("Operador Atual", op_sel if op_sel != "Equipe Total" else "Time Completo", "Filtro ativo", "#FF9800")
@@ -194,4 +200,5 @@ if not df_bruto.empty:
 
 else:
     st.error("⚠️ Dados não encontrados para a data selecionada.")
+
 
