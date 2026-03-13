@@ -119,7 +119,7 @@ if not df_bruto.empty:
     fantasmas = ['', 'NAN', 'NONE', 'NULL']
     operadores_validos = sorted([op for op in df_base['OPERADOR'].unique() if pd.notna(op) and op not in fantasmas])
     
-    op_sel = st.sidebar.multiselect("👥 Filtrar Equipe (Remova intrusos):", options=operadores_validos, default=operadores_validos)
+    op_sel = st.sidebar.multiselect("👥 Filtrar Equipe :", options=operadores_validos, default=operadores_validos)
     
     df_producao_equipe = df_base[(df_base['Data_Armz'] == data_sel) & (df_base['SITUACAO'] == '25') & (df_base['OPERADOR'].isin(op_sel))]
 
