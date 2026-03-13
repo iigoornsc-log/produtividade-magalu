@@ -37,7 +37,7 @@ def exibir_kpi(titulo, valor, subtitulo="", cor="#0086FF"):
     """, unsafe_allow_html=True)
 
 # =========================================================================
-# 2. MOTOR DE DADOS (CORRIGIDO PARA FORMATOS DISTINTOS)
+# 2. MOTOR DE DADOS (USANDO OS NOMES EXATOS DAS COLUNAS)
 # =========================================================================
 @st.cache_data(ttl=300)
 def carregar_dados():
@@ -51,31 +51,41 @@ def carregar_dados():
         data = ws.get_all_values()
         
         df = pd.DataFrame(data[1:], columns=data[0])
+        df.columns = df.columns.str.strip().str.upper() # Limpa os nomes das colunas
         
-        # Mapeamento
-        df['NU_ETIQUETA'] = df.iloc[:, 1].astype(str).str.strip()
-        df['QT_PRODUTO'] = pd.to_numeric(df.iloc[:, 5], errors='coerce').fillna(0)
-        df['SITUACAO'] = df.iloc[:, 7].astype(str).str.strip()
-        df['OPERADOR'] = df.iloc[:, 17].astype(str).str.strip().str.upper()
+        # -------------------------------------------------------------------
+        # BUSCANDO EXATAMENTE PELO NOME DA COLUNA (Fim do erro de posição)
+        # -------------------------------------------------------------------
+        df['NU_ETIQUETA'] = df['NU_ETIQUETA'].astype(str).str.strip()
+        df['QT_PRODUTO'] = pd.to_numeric(df['QT_PRODUTO'], errors='coerce').fillna(0)
+        df['SITUACAO'] = df['SITUACAO'].astype(str).str.strip()
+        df['OPERADOR'] = df['OPERADOR'].astype(str).str.strip().str.upper()
         
-        # --- A MÁGICA DOS FORMATOS ACONTECE AQUI ---
+        # Data Base
+        df['Data_Ref'] = pd.to_datetime(df['DATA'], format='%d/%m/%Y', errors='coerce').dt.date
         
-        # 1. Coluna M (DT_CONFERENCIA) - Formato ISO (Ex: 2026-03-12T16:18:37)
-        df['DT_CONFERENCIA'] = pd.to_datetime(df.iloc[:, 12], errors='coerce') 
+        # O Pandas processa as datas apenas para calcular o tempo de espera e o dia original
+        df['DT_CONFERENCIA_CALC'] = pd.to_datetime(df['DT_CONFERENCIA'], errors='coerce') 
+        df['DT_ARMAZENAGEM_CALC'] = pd.to_datetime(df['DT_ARMAZENAGEM'], format='%d/%m/%Y %H:%M:%S', errors='coerce')
         
-        # 2. Coluna O (DT_ARMAZENAGEM) - Formato BR (Ex: 12/03/2026 16:26:16)
-        df['DT_ARMAZENAGEM'] = pd.to_datetime(df.iloc[:, 14], format='%d/%m/%Y %H:%M:%S', errors='coerce')
+        df['Data_Conf'] = df['DT_CONFERENCIA_CALC'].dt.date
+        df['Data_Armz'] = df['Data_Ref'] # Referência oficial de dia da armazenagem
         
-        # 3. Coluna Q (Data_Ref) - Assumindo que é formato BR também (Ex: 12/03/2026)
-        df['Data_Ref'] = pd.to_datetime(df.iloc[:, 16], format='%d/%m/%Y', errors='coerce').dt.date
+        df['Tempo_Espera_Minutos'] = (df['DT_ARMAZENAGEM_CALC'] - df['DT_CONFERENCIA_CALC']).dt.total_seconds() / 60.0
         
-        # Extração das horas
-        df['Data_Conf'] = df['DT_CONFERENCIA'].dt.date
-        df['Hora_Conf'] = df['DT_CONFERENCIA'].dt.strftime('%H:00')
-        df['Data_Armz'] = df['DT_ARMAZENAGEM'].dt.date
-        df['Hora_Armz'] = df['DT_ARMAZENAGEM'].dt.strftime('%H:00')
-        
-        df['Tempo_Espera_Minutos'] = (df['DT_ARMAZENAGEM'] - df['DT_CONFERENCIA']).dt.total_seconds() / 60.0
+        # -------------------------------------------------------------------
+        # PUXANDO AS HORAS DAS SUAS NOVAS COLUNAS (A Mágica)
+        # -------------------------------------------------------------------
+        def formata_hora(h):
+            if pd.isna(h) or str(h).strip() in ['', 'NAN', 'NULL', 'NONE']: return None
+            try:
+                # Transforma '14' em '14:00'
+                return f"{int(float(h)):02d}:00"
+            except:
+                return None
+                
+        df['Hora_Conf'] = df['HORA CONF'].apply(formata_hora)
+        df['Hora_Armz'] = df['HORA ARMZ'].apply(formata_hora)
         
         return df.dropna(subset=['Data_Ref'])
     except Exception as e:
@@ -85,10 +95,7 @@ def carregar_dados():
 df_bruto = carregar_dados()
 
 if not df_bruto.empty:
-    # -------------------------------------------------------------------------
-    # A REGRA DE OURO: REMOVE SITUAÇÃO 20 E LIXOS
-    # Só entra o que JÁ CAIU NA DOCA (23) ou JÁ FOI GUARDADO (25)
-    # -------------------------------------------------------------------------
+    # Remove Situação 20 e lixos (Só fica quem está na Doca ou Guardado)
     df_bruto = df_bruto[df_bruto['SITUACAO'].isin(['23', '25'])]
 
     # PAINEL LATERAL
@@ -115,17 +122,16 @@ if not df_bruto.empty:
         saldo_inicial = 0
     else:
         df_base = pd.concat([df_hoje_conf, df_hoje_armz]).drop_duplicates(subset=['NU_ETIQUETA'])
-        # A Herança Real: Conferido antes de hoje e que amanheceu como Pendente (23) OU foi armazenado hoje.
+        # Saldo de Ontem = Conferido ANTES de hoje que continua na Situação 23 OU foi guardado só hoje
         mask_heranca = (df_bruto['Data_Conf'] < data_sel) & ((df_bruto['Data_Armz'] >= data_sel) | (df_bruto['SITUACAO'] == '23'))
         saldo_inicial = df_bruto[mask_heranca]['NU_ETIQUETA'].nunique()
 
-    # FILTRO DE OPERADORES (Ignorando quem está vazio para a lista)
+    # FILTRO DE OPERADORES
     fantasmas = ['', 'NAN', 'NONE', 'NULL']
     operadores_validos = sorted([op for op in df_base['OPERADOR'].unique() if pd.notna(op) and op not in fantasmas])
     
     op_sel = st.sidebar.multiselect("👥 Filtrar Equipe (Remova intrusos):", options=operadores_validos, default=operadores_validos)
     
-    # A base de produção foca APENAS no que foi armazenado hoje (SITUAÇÃO 25) pela equipe filtrada
     df_producao_equipe = df_base[(df_base['Data_Armz'] == data_sel) & (df_base['SITUACAO'] == '25') & (df_base['OPERADOR'].isin(op_sel))]
 
     # CABEÇALHO
@@ -138,7 +144,7 @@ if not df_bruto.empty:
     qtd_etiquetas_armz = df_producao_equipe['NU_ETIQUETA'].nunique()
     qtd_pecas_armz = df_producao_equipe['QT_PRODUTO'].sum()
     
-    # Pendentes Reais da Doca (Situação 23)
+    # Total de etiquetas estritamente na situação 23 AGORA
     qtd_pendentes_doca = df_base[df_base['SITUACAO'] == '23']['NU_ETIQUETA'].nunique()
     if modo_visao == "Global (Incluir Herança)":
         qtd_pendentes_doca += df_bruto[(df_bruto['Data_Conf'] < data_sel) & (df_bruto['SITUACAO'] == '23')]['NU_ETIQUETA'].nunique()
@@ -155,12 +161,11 @@ if not df_bruto.empty:
     with c4: exibir_kpi("Filtro Ativo", texto_op_kpi, "Pessoas analisadas", "#FF9800")
 
     # =========================================================================
-    # BLOCO 2: FLUXO DA DOCA (CORRIGIDO: RETRATO FIEL)
+    # BLOCO 2: FLUXO E PENDÊNCIAS (FOTO REAL DA HORA)
     # =========================================================================
     st.markdown("<div class='bloco-header'>🌊 Fluxo de Trabalho e Fila da Doca (Backlog)</div>", unsafe_allow_html=True)
     
-    # 1. HORAS ÚNICAS DO DIA
-    # Pega todas as horas que tiveram alguma movimentação (Conf ou Armz) no dia selecionado
+    # Pega as horas únicas em que ocorreu alguma coisa hoje
     horas_conf = df_base[df_base['Data_Conf'] == data_sel]['Hora_Conf'].dropna().unique()
     horas_armz = df_producao_equipe['Hora_Armz'].dropna().unique()
     todas_horas = sorted(list(set(list(horas_conf) + list(horas_armz))))
@@ -168,29 +173,17 @@ if not df_bruto.empty:
     dados_grafico = []
     
     for hora in todas_horas:
-        # A. ARMAZENADOS NA HORA (Saída da Equipe)
-        # Etiquetas com Sit 25 que foram guardadas exatamente nesta hora
+        # A. ARMAZENADOS: Só entra se for Sit 25 e o operador for da sua equipe
         armz_hora = df_producao_equipe[df_producao_equipe['Hora_Armz'] == hora]['NU_ETIQUETA'].nunique()
         
-        # B. CONFERIDOS NA HORA (Entrada Nova)
-        # Etiquetas que foram conferidas exatamente nesta hora (independente de estarem 23 ou 25 agora)
+        # B. CONFERIDOS: Tudo que foi "bipado de entrada" nessa hora no dia atual
         conf_hora = df_base[(df_base['Data_Conf'] == data_sel) & (df_base['Hora_Conf'] == hora)]['NU_ETIQUETA'].nunique()
         
-        # C. PENDÊNCIAS (A Foto da Fila Atualizada)
+        # C. PENDÊNCIAS (A Foto Real): Olhamos tudo que foi conferido ATÉ essa hora e que AINDA está com Situação 23
         if modo_visao == "Líquida (Apenas do Dia)":
-             # Líquida: Fila = Etiquetas que nasceram hoje, foram conferidas ATÉ AGORA e ainda estão Sit 23
-             pendentes = df_base[
-                 (df_base['Data_Conf'] == data_sel) & 
-                 (df_base['Hora_Conf'] <= hora) & 
-                 (df_base['SITUACAO'] == '23')
-             ]['NU_ETIQUETA'].nunique()
+             pendentes = df_base[(df_base['Data_Conf'] == data_sel) & (df_base['Hora_Conf'] <= hora) & (df_base['SITUACAO'] == '23')]['NU_ETIQUETA'].nunique()
         else:
-             # Global: Fila = Saldo Herdado + Etiquetas conferidas ATÉ AGORA (hoje) e que ainda estão Sit 23
-             pendentes_hoje = df_base[
-                 (df_base['Data_Conf'] == data_sel) & 
-                 (df_base['Hora_Conf'] <= hora) & 
-                 (df_base['SITUACAO'] == '23')
-             ]['NU_ETIQUETA'].nunique()
+             pendentes_hoje = df_base[(df_base['Data_Conf'] == data_sel) & (df_base['Hora_Conf'] <= hora) & (df_base['SITUACAO'] == '23')]['NU_ETIQUETA'].nunique()
              pendentes = saldo_inicial + pendentes_hoje
              
         dados_grafico.append({
@@ -232,7 +225,7 @@ if not df_bruto.empty:
         )
         st.plotly_chart(fig_fluxo, use_container_width=True)
     else:
-        st.info("Nenhum fluxo registrado para as seleções.")
+        st.info("Nenhuma movimentação identificada nas horas processadas.")
 
     # =========================================================================
     # BLOCO 3: OPERADORES
