@@ -54,7 +54,6 @@ def carregar_dados():
         
         df['QT_PRODUTO'] = pd.to_numeric(df['QT_PRODUTO'], errors='coerce').fillna(0)
         
-        # Datas seguras com formato 'mixed'
         df['DT_CONFERENCIA'] = pd.to_datetime(df['DT_CONFERENCIA'], errors='coerce', dayfirst=True, format='mixed') 
         df['DT_ARMAZENAGEM'] = pd.to_datetime(df['DT_ARMAZENAGEM'], errors='coerce', dayfirst=True, format='mixed')
         
@@ -68,7 +67,6 @@ def carregar_dados():
         df['Data_Armz'] = df['DT_ARMAZENAGEM'].dt.date
         df['Hora_Armz'] = df['DT_ARMAZENAGEM'].dt.strftime('%H:00')
         
-        df['Data_Ref'] = df['Data_Armz']
         df['Tempo_Espera_Minutos'] = (df['DT_ARMAZENAGEM'] - df['DT_CONFERENCIA']).dt.total_seconds() / 60.0
         
         return df
@@ -80,79 +78,89 @@ df_bruto = carregar_dados()
 
 if not df_bruto.empty:
     # -------------------------------------------------------------------------
-    # 🧹 FAXINA DE DADOS: REMOVENDO OPERADORES FANTASMAS
+    # PAINEL LATERAL: FILTROS E CONTROLES
     # -------------------------------------------------------------------------
-    df_bruto = df_bruto[~df_bruto['OPERADOR'].isin(['', 'NAN', 'NONE', 'NULL'])]
-
-    # FILTROS
     st.sidebar.image("https://magalog.com.br/opengraph-image.jpg?fdd536e7d35ec9da", width=250)
-    st.sidebar.markdown("### 🎛️ Filtros Globais")
+    st.sidebar.markdown("### 🎛️ Controles da Operação")
     
     data_max = df_bruto['Data_Conf'].dropna().max()
-    data_sel = st.sidebar.date_input("🗓️ Data da Operação", data_max)
+    data_sel = st.sidebar.date_input("🗓️ Data de Análise", data_max)
     
-    # -------------------------------------------------------------------------
-    # FILTRO ESTRITO DO DIA
-    # -------------------------------------------------------------------------
-    df_dia = df_bruto[df_bruto['Data_Conf'] == data_sel].copy()
-    
-    # -------------------------------------------------------------------------
-    # NOVO FILTRO: MULTIPLAS SELEÇÕES DE OPERADORES
-    # -------------------------------------------------------------------------
-    operadores_validos = sorted([op for op in df_dia['OPERADOR'].unique() if pd.notna(op) and str(op).strip() != ''])
-    
-    op_sel = st.sidebar.multiselect(
-        "👥 Filtrar Equipe:", 
-        options=operadores_validos, 
-        default=operadores_validos # Já vem todo mundo selecionado por padrão
+    modo_visao = st.sidebar.radio(
+        "🔎 Modo de Análise",
+        ["Líquida (Apenas do Dia)", "Global (Incluir Herança)"],
+        help="Líquida: Foca estritamente no que entrou hoje. Global: Puxa todo o backlog de ontem que foi armazenado hoje e a fila real."
     )
     
-    # Aplica o filtro da lista de operadores selecionados
-    df = df_dia[df_dia['OPERADOR'].isin(op_sel)]
+    # LÓGICA DO MODO DE VISÃO
+    df_hoje_conf = df_bruto[df_bruto['Data_Conf'] == data_sel]
+    df_hoje_armz = df_bruto[df_bruto['Data_Armz'] == data_sel]
+    
+    if modo_visao == "Líquida (Apenas do Dia)":
+        df_base = df_hoje_conf.copy()
+        saldo_inicial = 0
+    else:
+        # Pega tudo que tocou no dia de hoje (Conferido hoje ou Armazenado hoje)
+        df_base = pd.concat([df_hoje_conf, df_hoje_armz]).drop_duplicates(subset=['NU_ETIQUETA'])
+        # Calcula a herança exata (Conferido antes de hoje e que amanheceu pendente)
+        mask_heranca = (df_bruto['Data_Conf'] < data_sel) & ((df_bruto['Data_Armz'] >= data_sel) | (df_bruto['Data_Armz'].isnull()))
+        saldo_inicial = df_bruto[mask_heranca]['NU_ETIQUETA'].nunique()
 
-    # CABEÇALHO
-    st.title(f"🚀 Gestão de Produtividade | {data_sel.strftime('%d/%m/%Y')}")
-    st.caption("Visão Pura: Somente etiquetas que deram entrada na doca (Conferência) no dia selecionado.")
+    # FILTRO DE EQUIPE (Múltipla Seleção)
+    fantasmas = ['', 'NAN', 'NONE', 'NULL']
+    operadores_validos = sorted([op for op in df_base['OPERADOR'].unique() if pd.notna(op) and op not in fantasmas])
+    
+    op_sel = st.sidebar.multiselect("👥 Filtrar Equipe (Remova intrusos):", options=operadores_validos, default=operadores_validos)
+    
+    # -------------------------------------------------------------------------
+    # CONSTRUÇÃO DO DASHBOARD
+    # -------------------------------------------------------------------------
+    st.title(f"🚀 Torre de Controle | {data_sel.strftime('%d/%m/%Y')}")
+    st.caption(f"Visualizando: **{modo_visao}**")
+    
+    # df_producao foca APENAS no que a equipe selecionada fez hoje
+    df_producao = df_base[(df_base['Data_Armz'] == data_sel) & (df_base['OPERADOR'].isin(op_sel))]
     
     # BLOCO 1: KPIs
     c1, c2, c3, c4 = st.columns(4)
     
-    df_armazenado_hoje = df[df['Data_Armz'] == data_sel]
-    
-    qtd_etiquetas = df_armazenado_hoje['NU_ETIQUETA'].nunique()
-    qtd_pecas = df_armazenado_hoje['QT_PRODUTO'].sum()
-    
-    espera_valida = df_armazenado_hoje[df_armazenado_hoje['Tempo_Espera_Minutos'] > 0]['Tempo_Espera_Minutos']
+    qtd_etiquetas = df_producao['NU_ETIQUETA'].nunique()
+    qtd_pecas = df_producao['QT_PRODUTO'].sum()
+    espera_valida = df_producao[df_producao['Tempo_Espera_Minutos'] > 0]['Tempo_Espera_Minutos']
     sla_medio = espera_valida.mean() if not espera_valida.empty else 0
     txt_sla = f"{int(sla_medio // 60)}h {int(sla_medio % 60)}m"
     
-    # Lógica inteligente para mostrar o texto do Operador no KPI
-    if len(op_sel) == len(operadores_validos):
-        texto_op_kpi = "Equipe Total"
-    elif len(op_sel) == 1:
-        texto_op_kpi = op_sel[0]
-    else:
-        texto_op_kpi = f"{len(op_sel)} Operadores"
+    texto_op_kpi = "Equipe Total" if len(op_sel) == len(operadores_validos) else (op_sel[0] if len(op_sel) == 1 else f"{len(op_sel)} Operadores")
     
-    with c1: exibir_kpi("Armazenados (Líquido)", f"{qtd_etiquetas:,.0f}".replace(',','.'), "Referente à entrada de hoje", "#0086FF")
-    with c2: exibir_kpi("Peças Processadas", f"{qtd_pecas:,.0f}".replace(',','.'), "Volume físico hoje", "#9B59B6")
+    with c1: exibir_kpi("Armazenados (Equipe)", f"{qtd_etiquetas:,.0f}".replace(',','.'), "Etiquetas bipadas", "#0086FF")
+    with c2: exibir_kpi("Peças Processadas", f"{qtd_pecas:,.0f}".replace(',','.'), "Volume físico guardado", "#9B59B6")
     with c3: exibir_kpi("SLA Médio Doca", txt_sla, "Tempo em espera", "#F44336" if sla_medio > 120 else "#4CAF50")
-    with c4: exibir_kpi("Filtro de Equipe", texto_op_kpi, "Pessoas analisadas", "#FF9800")
+    with c4: exibir_kpi("Filtro Ativo", texto_op_kpi, "Pessoas analisadas", "#FF9800")
 
-    # BLOCO 2: FLUXO E PENDÊNCIAS
+    # BLOCO 2: FLUXO E PENDÊNCIAS (REALIDADE DA DOCA)
     st.markdown("<div class='bloco-header'>🌊 Fluxo de Trabalho e Pendências Acumuladas</div>", unsafe_allow_html=True)
     
-    df_in = df.groupby('Hora_Conf')['NU_ETIQUETA'].nunique().reset_index(name='Conferidos')
+    # Conferidos da Doca (Ignora o filtro de operador, pois demanda é da doca inteira)
+    df_in = df_base[df_base['Data_Conf'] == data_sel].groupby('Hora_Conf')['NU_ETIQUETA'].nunique().reset_index(name='Conferidos')
     df_in.rename(columns={'Hora_Conf': 'Hora'}, inplace=True)
     
-    df_out = df_armazenado_hoje.groupby('Hora_Armz')['NU_ETIQUETA'].nunique().reset_index(name='Armazenados')
-    df_out.rename(columns={'Hora_Armz': 'Hora'}, inplace=True)
+    # Armazenados Produzidos pela Equipe (Para a barra Azul)
+    df_out_equipe = df_producao.groupby('Hora_Armz')['NU_ETIQUETA'].nunique().reset_index(name='Armazenados')
+    df_out_equipe.rename(columns={'Hora_Armz': 'Hora'}, inplace=True)
     
-    df_fluxo = pd.merge(df_in, df_out, on='Hora', how='outer').fillna(0).sort_values('Hora')
+    # Armazenados Totais do CD (Para calcular a pendência real sem inflar a doca)
+    df_out_real_cd = df_base[df_base['Data_Armz'] == data_sel].groupby('Hora_Armz')['NU_ETIQUETA'].nunique().reset_index(name='Armz_Real')
+    df_out_real_cd.rename(columns={'Hora_Armz': 'Hora'}, inplace=True)
+    
+    # Mesclagem Mestra
+    df_fluxo = pd.merge(df_in, df_out_equipe, on='Hora', how='outer')
+    df_fluxo = pd.merge(df_fluxo, df_out_real_cd, on='Hora', how='left').fillna(0).sort_values('Hora')
     
     df_fluxo['Acum_Conf'] = df_fluxo['Conferidos'].cumsum()
-    df_fluxo['Acum_Armz'] = df_fluxo['Armazenados'].cumsum()
-    df_fluxo['Pendências'] = df_fluxo['Acum_Conf'] - df_fluxo['Acum_Armz']
+    df_fluxo['Acum_Armz_Real'] = df_fluxo['Armz_Real'].cumsum()
+    
+    # Cálculo Final da Pendência (Saldo Herança + Demandas Hoje - Saídas Reais Hoje)
+    df_fluxo['Pendências'] = saldo_inicial + df_fluxo['Acum_Conf'] - df_fluxo['Acum_Armz_Real']
     df_fluxo['Pendências'] = df_fluxo['Pendências'].apply(lambda x: x if x > 0 else 0)
 
     max_y = df_fluxo[['Armazenados', 'Conferidos']].max().max() if not df_fluxo.empty else 10
@@ -161,17 +169,17 @@ if not df_bruto.empty:
     fig_fluxo = go.Figure()
     
     fig_fluxo.add_trace(go.Bar(
-        x=df_fluxo['Hora'], y=df_fluxo['Armazenados'], name='Armazenados (Produção)', 
+        x=df_fluxo['Hora'], y=df_fluxo['Armazenados'], name='Armazenados (Equipe Filtrada)', 
         marker_color='#0086FF', text=df_fluxo['Armazenados'], textposition='auto', textfont=dict(color='white')
     ))
     
     fig_fluxo.add_trace(go.Bar(
-        x=df_fluxo['Hora'], y=df_fluxo['Conferidos'], name='Conferidos (Demanda)', 
+        x=df_fluxo['Hora'], y=df_fluxo['Conferidos'], name='Conferidos (Demanda CD)', 
         marker_color='#9d26ff', text=df_fluxo['Conferidos'], textposition='outside', textfont=dict(color='#9d26ff')
     ))
     
     fig_fluxo.add_trace(go.Scatter(
-        x=df_fluxo['Hora'], y=df_fluxo['Pendências'], name='Pendências (Doca)', mode='lines+markers+text', 
+        x=df_fluxo['Hora'], y=df_fluxo['Pendências'], name='Pendências (Fila Real da Doca)', mode='lines+markers+text', 
         line=dict(color='#E74C3C', width=3), yaxis='y2', text=df_fluxo['Pendências'], textposition='top center', textfont=dict(color='#E74C3C', weight='bold')
     ))
     
@@ -179,33 +187,31 @@ if not df_bruto.empty:
         plot_bgcolor='rgba(0,0,0,0)', barmode='group',
         legend=dict(orientation="h", y=1.15, x=0.5, xanchor='center'),
         yaxis=dict(title="Qtd Etiquetas", showgrid=True, gridcolor='#F1F3F5', range=[0, teto_grafico]), 
-        yaxis2=dict(title="Pendências Acumuladas", overlaying='y', side='right', showgrid=False),
+        yaxis2=dict(title="Fila Acumulada", overlaying='y', side='right', showgrid=False),
         hovermode="x unified"
     )
     st.plotly_chart(fig_fluxo, use_container_width=True)
 
     # BLOCO 3: OPERADORES
     if len(op_sel) > 0:
-        st.markdown("<div class='bloco-header'>👥 Performance dos Operadores Filtrados</div>", unsafe_allow_html=True)
+        st.markdown("<div class='bloco-header'>👥 Performance da Equipe Selecionada</div>", unsafe_allow_html=True)
         col_rank, col_heat = st.columns([4, 6])
         
         with col_rank:
-            st.markdown("##### 🏆 Ranking de Etiquetas")
-            rank_op = df_armazenado_hoje.groupby('OPERADOR').agg({'NU_ETIQUETA': 'nunique', 'Hora_Armz': 'nunique'}).reset_index()
+            st.markdown("##### 🏆 Ranking de Armazenagem")
+            rank_op = df_producao.groupby('OPERADOR').agg({'NU_ETIQUETA': 'nunique', 'Hora_Armz': 'nunique'}).reset_index()
             rank_op.columns = ['Operador', 'Etiquetas', 'Horas']
             rank_op['Etq/Hora'] = (rank_op['Etiquetas'] / rank_op['Horas']).round(1)
             st.dataframe(rank_op.sort_values('Etiquetas', ascending=False)[['Operador', 'Etiquetas', 'Etq/Hora']], use_container_width=True, hide_index=True, height=350)
         
         with col_heat:
-            st.markdown("##### 🔥 Produtividade (Armazenados/Hora)")
-            df_heat = df_armazenado_hoje.groupby(['OPERADOR', 'Hora_Armz'])['NU_ETIQUETA'].nunique().reset_index()
+            st.markdown("##### 🔥 Calor de Produtividade (Armazenados/Hora)")
+            df_heat = df_producao.groupby(['OPERADOR', 'Hora_Armz'])['NU_ETIQUETA'].nunique().reset_index()
             fig_heat = px.density_heatmap(df_heat, x="Hora_Armz", y="OPERADOR", z="NU_ETIQUETA", color_continuous_scale="Blues", text_auto=True)
             fig_heat.update_layout(plot_bgcolor='rgba(0,0,0,0)', yaxis=dict(title=""), xaxis_title="Hora", coloraxis_showscale=False)
             st.plotly_chart(fig_heat, use_container_width=True)
     else:
-        st.warning("⚠️ Selecione ao menos um operador na barra lateral para ver o painel.")
+        st.warning("⚠️ Selecione ao menos um operador na barra lateral para ver os dados da equipe.")
 
 else:
     st.error("⚠️ Dados não encontrados para a data selecionada.")
-
-
