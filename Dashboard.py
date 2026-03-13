@@ -61,17 +61,13 @@ def carregar_dados():
         # --- A MÁGICA DOS FORMATOS ACONTECE AQUI ---
         
         # 1. Coluna M (DT_CONFERENCIA) - Formato ISO (Ex: 2026-03-12T16:18:37)
-        # O Pandas é excelente com ISO, não precisa de 'dayfirst', só do 'coerce'
         df['DT_CONFERENCIA'] = pd.to_datetime(df.iloc[:, 12], errors='coerce') 
         
         # 2. Coluna O (DT_ARMAZENAGEM) - Formato BR (Ex: 12/03/2026 16:26:16)
-        # Aqui NÓS OBRIGAMOS a ser dia/mês/ano com format='%d/%m/%Y %H:%M:%S'
         df['DT_ARMAZENAGEM'] = pd.to_datetime(df.iloc[:, 14], format='%d/%m/%Y %H:%M:%S', errors='coerce')
         
         # 3. Coluna Q (Data_Ref) - Assumindo que é formato BR também (Ex: 12/03/2026)
         df['Data_Ref'] = pd.to_datetime(df.iloc[:, 16], format='%d/%m/%Y', errors='coerce').dt.date
-        
-        # --- FIM DA MÁGICA ---
         
         # Extração das horas
         df['Data_Conf'] = df['DT_CONFERENCIA'].dt.date
@@ -85,6 +81,10 @@ def carregar_dados():
     except Exception as e:
         st.error(f"Erro na conexão: {e}")
         return pd.DataFrame()
+
+df_bruto = carregar_dados()
+
+if not df_bruto.empty:
     # -------------------------------------------------------------------------
     # A REGRA DE OURO: REMOVE SITUAÇÃO 20 E LIXOS
     # Só entra o que JÁ CAIU NA DOCA (23) ou JÁ FOI GUARDADO (25)
@@ -163,11 +163,11 @@ def carregar_dados():
     df_in = df_base[df_base['Data_Conf'] == data_sel].groupby('Hora_Conf')['NU_ETIQUETA'].nunique().reset_index(name='Conferidos')
     df_in.rename(columns={'Hora_Conf': 'Hora'}, inplace=True)
     
-    # Saídas da Equipe (Barras Azuis)
+    # Saídas da Equipe (Barras Azuis) -> SÓ SITUAÇÃO 25
     df_out_equipe = df_producao_equipe.groupby('Hora_Armz')['NU_ETIQUETA'].nunique().reset_index(name='Armazenados')
     df_out_equipe.rename(columns={'Hora_Armz': 'Hora'}, inplace=True)
     
-    # Saídas Reais do CD (Para a matemática da Pendência não estourar se você ocultar um operador)
+    # Saídas Reais do CD (SÓ SITUAÇÃO 25) (Para a matemática da Pendência)
     df_out_real_cd = df_base[(df_base['Data_Armz'] == data_sel) & (df_base['SITUACAO'] == '25')].groupby('Hora_Armz')['NU_ETIQUETA'].nunique().reset_index(name='Armz_CD')
     df_out_real_cd.rename(columns={'Hora_Armz': 'Hora'}, inplace=True)
     
@@ -215,7 +215,7 @@ def carregar_dados():
     # BLOCO 3: OPERADORES
     # =========================================================================
     if len(op_sel) > 0:
-        st.markdown("<div class='bloco-header'>👥 Performance da Equipe Selecionada (Apenas Situação 25)</div>", unsafe_allow_html=True)
+        st.markdown("<div class='bloco-header'>👥 Performance da Equipe Selecionada (Apenas Sit. 25)</div>", unsafe_allow_html=True)
         col_rank, col_heat = st.columns([4, 6])
         
         with col_rank:
