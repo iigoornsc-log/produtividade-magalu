@@ -37,15 +37,19 @@ def exibir_kpi(titulo, valor, subtitulo="", cor="#0086FF"):
     """, unsafe_allow_html=True)
 
 # =========================================================================
-# FUNÇÃO DO POP-UP (RAIO-X DA HORA)
+# FUNÇÃO DO POP-UP (RAIO-X DA HORA - CORRIGIDA)
 # =========================================================================
 @st.dialog("🔍 RAIO-X DA HORA: DETALHAMENTO DA OPERAÇÃO", width="large")
 def popup_detalhe_hora(hora, df_base, data_sel):
-    # Filtra tudo que aconteceu nesta hora (seja entrada de conferência ou saída de armazenagem)
-    df_hora = df_base[
-        ((df_base['Hora_Conf'] == hora) & (df_base['Data_Conf'] == data_sel)) | 
-        ((df_base['Hora_Armz'] == hora) & (df_base['Data_Armz'] == data_sel) & (df_base['SITUACAO'] == '25'))
-    ].copy()
+    
+    # 1. O que foi CONFERIDO nesta hora (independente de quando guardou)
+    df_conferido_agora = df_base[(df_base['Hora_Conf'] == hora) & (df_base['Data_Conf'] == data_sel)].copy()
+    
+    # 2. O que foi ARMAZENADO nesta hora (independente de quando conferiu)
+    df_armazenado_agora = df_base[(df_base['Hora_Armz'] == hora) & (df_base['Data_Armz'] == data_sel) & (df_base['SITUACAO'] == '25')].copy()
+    
+    # Junta as duas visões para mostrar na tabela (sem duplicar etiquetas que entraram e saíram na mesma hora)
+    df_hora = pd.concat([df_conferido_agora, df_armazenado_agora]).drop_duplicates(subset=['NU_ETIQUETA'])
     
     if df_hora.empty:
         st.warning(f"Nenhuma movimentação registrada às {hora}.")
@@ -53,16 +57,20 @@ def popup_detalhe_hora(hora, df_base, data_sel):
         
     st.markdown(f"### ⏱️ Resumo Operacional das **{hora}**")
     
-    qtd_conf = df_hora[(df_hora['Hora_Conf'] == hora) & (df_hora['Data_Conf'] == data_sel)]['NU_ETIQUETA'].nunique()
-    qtd_armz = df_hora[(df_hora['Hora_Armz'] == hora) & (df_hora['Data_Armz'] == data_sel) & (df_hora['SITUACAO'] == '25')]['NU_ETIQUETA'].nunique()
+    # A Correção do KPI: Só conta o que REALMENTE aconteceu naquela hora!
+    qtd_conf = df_conferido_agora['NU_ETIQUETA'].nunique()
+    qtd_armz = df_armazenado_agora['NU_ETIQUETA'].nunique()
     
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Etiquetas Conferidas", qtd_conf)
-    c2.metric("Etiquetas Armazenadas", qtd_armz)
-    c3.metric("Peças Movimentadas", f"{df_hora['QT_PRODUTO'].sum():,.0f}".replace(',','.'))
-    c4.metric("Agendas Processadas", df_hora['AGENDA'].nunique())
+    c1.metric("Etiquetas Conferidas Aqui", qtd_conf)
+    c2.metric("Etiquetas Armazenadas Aqui", qtd_armz)
     
-    st.markdown("#### 📋 Relatório Geral de Movimentações")
+    # Soma de peças e agendas leva em conta tudo que se moveu (entrou ou saiu)
+    c3.metric("Peças Movimentadas", f"{df_hora['QT_PRODUTO'].sum():,.0f}".replace(',','.'))
+    c4.metric("Agendas Envolvidas", df_hora['AGENDA'].nunique())
+    
+    st.markdown("#### 📋 Relatório Geral de Movimentações desta Hora")
+    st.info("💡 Dica: A tabela mostra tudo que 'tocou' na doca nesta hora. Se a H. Armazenagem for diferente, significa que a etiqueta só deu entrada (conferência) neste momento.")
     
     # Preparando a tabela para exibição
     df_exibicao = df_hora[['NU_ETIQUETA', 'SITUACAO', 'PRODUTO', 'AGENDA', 'CONFERENTE', 'OPERADOR', 'Hora_Conf', 'Hora_Armz']].copy()
