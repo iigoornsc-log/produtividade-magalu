@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 import gspread
 from google.oauth2.service_account import Credentials
 import json
+from datetime import datetime
 
 # =========================================================================
 # 1. CONFIGURAÇÕES INICIAIS E CSS
@@ -36,19 +37,17 @@ def exibir_kpi(titulo, valor, subtitulo="", cor="#0086FF"):
     </div>
     """, unsafe_allow_html=True)
 
-# Converter formato 00:00:00 para Minutos Totais
+# Conversões de Tempo
 def time_to_mins(t_str):
     if pd.isna(t_str) or str(t_str).strip() == '': return 0
     try:
         partes = str(t_str).split(':')
-        if len(partes) == 3:
-            return int(partes[0]) * 60 + int(partes[1]) + float(partes[2]) / 60.0
+        if len(partes) == 3: return int(partes[0]) * 60 + int(partes[1]) + float(partes[2]) / 60.0
         return 0
     except: return 0
 
-# Formatar minutos de volta para texto (Ex: 1h 25m)
 def mins_to_text(mins):
-    if pd.isna(mins) or mins == 0: return "0m"
+    if pd.isna(mins) or mins <= 0: return "0m"
     h = int(mins // 60)
     m = int(mins % 60)
     if h > 0: return f"{h}h {m}m"
@@ -111,46 +110,36 @@ def carregar_dados_conferencia():
         todas_abas = sh2.worksheets()
         
         # --- 1. HISTÓRICO (BASE DE DADOS) ---
-        # Acha a aba independente de letras maiúsculas ou espaços sobrando
         aba_hist = next((aba for aba in todas_abas if "BASE DE DADOS" in aba.title.upper()), None)
-        if not aba_hist:
-            raise ValueError("Não encontrei a aba 'Base de Dados' na planilha 2.")
+        if not aba_hist: raise ValueError("Não encontrei a aba 'Base de Dados'.")
             
-        # Puxa estritamente das colunas Q até W como você pediu!
         data_hist = aba_hist.get("Q:W")
-        if not data_hist:
-            raise ValueError("Colunas Q:W vazias na aba Base de Dados.")
-            
         df_hist = pd.DataFrame(data_hist[1:], columns=data_hist[0])
         df_hist.columns = df_hist.columns.str.strip().str.upper()
         
-        if 'TMP APC' in df_hist.columns:
-            df_hist['TMP APC'] = pd.to_numeric(df_hist['TMP APC'], errors='coerce').fillna(0)
-        if 'PEÇAS' in df_hist.columns:
-            df_hist['PEÇAS'] = pd.to_numeric(df_hist['PEÇAS'], errors='coerce').fillna(0)
+        if 'TMP APC' in df_hist.columns: df_hist['TMP APC'] = pd.to_numeric(df_hist['TMP APC'], errors='coerce').fillna(0)
+        if 'PEÇAS' in df_hist.columns: df_hist['PEÇAS'] = pd.to_numeric(df_hist['PEÇAS'], errors='coerce').fillna(0)
             
         # --- 2. PLANILHA DIA ATUAL ---
         aba_hoje = next((aba for aba in todas_abas if "DIA ATUAL" in aba.title.upper()), None)
-        if not aba_hoje:
-            raise ValueError("Não encontrei a aba 'Dia Atual' na planilha 2.")
+        if not aba_hoje: raise ValueError("Não encontrei a aba 'Dia Atual'.")
             
-        # Puxa estritamente das colunas A até H
-        data_hoje = aba_hoje.get("A:H")
-        if not data_hoje:
-            raise ValueError("Colunas A:H vazias na aba Dia Atual.")
-            
+        # AGORA BUSCANDO ATÉ A COLUNA "I" PARA PEGAR O STATUS NOVO
+        data_hoje = aba_hoje.get("A:I")
         df_hoje = pd.DataFrame(data_hoje[1:], columns=data_hoje[0])
         df_hoje.columns = df_hoje.columns.str.strip().str.upper()
         
-        if 'PEÇAS' in df_hoje.columns:
-            df_hoje['PEÇAS'] = pd.to_numeric(df_hoje['PEÇAS'], errors='coerce').fillna(0)
-        if 'PÇS PENDENTES' in df_hoje.columns:
-            df_hoje['PÇS PENDENTES'] = pd.to_numeric(df_hoje['PÇS PENDENTES'], errors='coerce').fillna(0)
-        if 'DURAÇÃO CARGA' in df_hoje.columns:
-            df_hoje['DURAÇÃO CARGA'] = df_hoje['DURAÇÃO CARGA'].astype(str).str.strip()
+        # Renomeia o status que veio do sheets para não confundir com a nossa meta
+        if 'STATUS' in df_hoje.columns:
+            df_hoje.rename(columns={'STATUS': 'STATUS_FISICO'}, inplace=True)
+        else:
+            df_hoje['STATUS_FISICO'] = 'INDEFINIDO'
+        
+        if 'PEÇAS' in df_hoje.columns: df_hoje['PEÇAS'] = pd.to_numeric(df_hoje['PEÇAS'], errors='coerce').fillna(0)
+        if 'PÇS PENDENTES' in df_hoje.columns: df_hoje['PÇS PENDENTES'] = pd.to_numeric(df_hoje['PÇS PENDENTES'], errors='coerce').fillna(0)
+        if 'DURAÇÃO CARGA' in df_hoje.columns: df_hoje['DURAÇÃO CARGA'] = df_hoje['DURAÇÃO CARGA'].astype(str).str.strip()
             
         return df_hist, df_hoje
-        
     except Exception as e:
         st.error(f"Erro Conferência: {e}")
         return pd.DataFrame(), pd.DataFrame()
@@ -185,11 +174,10 @@ def popup_detalhe_hora(hora, df_base, data_sel):
 df_armz = carregar_dados_armazenagem()
 df_hist_conf, df_hoje_conf = carregar_dados_conferencia()
 
-# Criando o Sistema de Abas (Tabs)
 tab1, tab2 = st.tabs(["📦 Torre de Armazenagem (Doca)", "🔎 Torre de Conferência (Metas)"])
 
 # -------------------------------------------------------------------------
-# ABA 1: ARMAZENAGEM (O SEU DASHBOARD ATUAL PERFEITO)
+# ABA 1: ARMAZENAGEM (IGUAL)
 # -------------------------------------------------------------------------
 with tab1:
     if not df_armz.empty:
@@ -286,14 +274,14 @@ with tab1:
     else: st.warning("Sem dados de Armazenagem.")
 
 # -------------------------------------------------------------------------
-# ABA 2: CONFERÊNCIA (O SEU NOVO MOTOR DE METAS PREDITIVAS)
+# ABA 2: CONFERÊNCIA (AGORA COM PREVISÃO PREDITIVA E STATUS DA DOCA)
 # -------------------------------------------------------------------------
 with tab2:
     if not df_hist_conf.empty and not df_hoje_conf.empty:
-        st.title("🎯 Produtividade e Metas de Conferência")
-        st.caption("Cálculo preditivo de metas baseado no histórico do fornecedor e categoria.")
+        st.title("🎯 Torre de Conferência e Previsão")
+        st.caption("Cálculo preditivo baseado no histórico. Monitoramento do Pátio e Docas em tempo real.")
         
-        # 1. Aprender com o Histórico (Machine Learning Básico)
+        # 1. Aprender com o Histórico
         taxas_hist = df_hist_conf.groupby(['FORNECEDOR', 'LINHA']).agg({'TMP APC':'sum', 'PEÇAS':'sum'}).reset_index()
         taxas_hist = taxas_hist[taxas_hist['PEÇAS'] > 0]
         taxas_hist['VELOCIDADE_MIN_PECA'] = taxas_hist['TMP APC'] / taxas_hist['PEÇAS']
@@ -302,61 +290,73 @@ with tab2:
 
         # 2. Aplicar Metas no Dia Atual
         df_hoje_conf['DURAÇÃO_REAL_MIN'] = df_hoje_conf['DURAÇÃO CARGA'].apply(time_to_mins)
+        df_hoje_conf['STATUS_FISICO'] = df_hoje_conf['STATUS_FISICO'].str.strip().str.upper()
         
-        # Cruzar a carga de hoje com a velocidade aprendida
         df_analise = pd.merge(df_hoje_conf, taxas_hist[['FORNECEDOR', 'LINHA', 'VELOCIDADE_MIN_PECA']], 
                               left_on=['ORIGEM', 'CATEGORIA'], right_on=['FORNECEDOR', 'LINHA'], how='left')
         
-        # Se for um fornecedor novo, usa a média global do CD
         df_analise['VELOCIDADE_MIN_PECA'] = df_analise['VELOCIDADE_MIN_PECA'].fillna(taxa_global_cd)
-        
-        # A Mágica: Calcular a Meta de Tempo
         df_analise['META_TEMPO_MIN'] = df_analise['PEÇAS'] * df_analise['VELOCIDADE_MIN_PECA']
         
-        # Calculando o Status
-        def calcular_status(row):
-            if row['DURAÇÃO_REAL_MIN'] == 0: return "⏳ Em Andamento"
-            if row['DURAÇÃO_REAL_MIN'] <= row['META_TEMPO_MIN']: return "✅ No Prazo"
-            return "🔴 Atrasado"
+        # --- A MÁGICA DO TEMPO PREDITIVO ---
+        agora = pd.Timestamp.now(tz='America/Sao_Paulo')
+        
+        def calcular_previsao(row):
+            status = row['STATUS_FISICO']
+            if status == 'OK': return "✅ Finalizado"
             
-        df_analise['STATUS'] = df_analise.apply(calcular_status, axis=1)
+            restante = row['META_TEMPO_MIN'] - row['DURAÇÃO_REAL_MIN']
+            if restante < 0: return "⚠️ Já Estourou"
+            
+            # Hora atual + Tempo restante para bater a meta
+            hora_fim = agora + pd.Timedelta(minutes=restante)
+            return hora_fim.strftime("%H:%M")
+            
+        def calcular_situacao_meta(row):
+            status = row['STATUS_FISICO']
+            if status == 'OK':
+                return "✅ No Prazo" if row['DURAÇÃO_REAL_MIN'] <= row['META_TEMPO_MIN'] else "🔴 Atrasou (Finalizado)"
+            else:
+                if row['DURAÇÃO_REAL_MIN'] > row['META_TEMPO_MIN']: return "🔴 Atrasado (Em Processo)"
+                elif status == 'EM PROCESSO': return "⏳ No Ritmo"
+                else: return "⏸️ Aguardando Início"
+            
+        df_analise['PREVISÃO FIM'] = df_analise.apply(calcular_previsao, axis=1)
+        df_analise['SITUAÇÃO META'] = df_analise.apply(calcular_situacao_meta, axis=1)
         
         # KPIs de Conferência
         c1, c2, c3, c4 = st.columns(4)
-        cargas_concluidas = df_analise[df_analise['DURAÇÃO_REAL_MIN'] > 0].shape[0]
-        cargas_atrasadas = df_analise[df_analise['STATUS'] == "🔴 Atrasado"].shape[0]
-        perc_acerto = 100 - ((cargas_atrasadas / cargas_concluidas) * 100) if cargas_concluidas > 0 else 0
+        cargas_totais = len(df_analise)
+        cargas_ok = df_analise[df_analise['STATUS_FISICO'] == 'OK'].shape[0]
+        cargas_fila = df_analise[df_analise['STATUS_FISICO'].isin(['EM DOCA', 'P-EXTERNO'])].shape[0]
         
-        with c1: exibir_kpi("Agendas do Dia", len(df_analise), "Atribuídas a conferentes", "#9B59B6")
-        with c2: exibir_kpi("Concluídas", cargas_concluidas, "Finalizadas", "#0086FF")
-        with c3: exibir_kpi("Aderência à Meta", f"{perc_acerto:.1f}%", "Cargas dentro do tempo", "#4CAF50" if perc_acerto > 80 else "#F44336")
-        with c4: exibir_kpi("Conferentes Ativos", df_analise['CONFERENTE'].nunique(), "Equipe na doca", "#FF9800")
+        # % de cargas que fecharam sem estourar o tempo
+        acertos = df_analise[df_analise['SITUAÇÃO META'].isin(['✅ No Prazo', '⏳ No Ritmo', '⏸️ Aguardando Início'])].shape[0]
+        perc_acerto = (acertos / cargas_totais) * 100 if cargas_totais > 0 else 0
         
-        st.markdown("<div class='bloco-header'>📊 Tabela de Produtividade vs Meta</div>", unsafe_allow_html=True)
+        with c1: exibir_kpi("Total Agendas", cargas_totais, "Na grade de hoje", "#9B59B6")
+        with c2: exibir_kpi("Cargas Finalizadas", cargas_ok, "Status 'OK'", "#0086FF")
+        with c3: exibir_kpi("Fila Física", cargas_fila, "Doca ou P-Externo", "#FF9800")
+        with c4: exibir_kpi("Saúde das Metas", f"{perc_acerto:.1f}%", "Aderência ao tempo", "#4CAF50" if perc_acerto > 80 else "#F44336")
         
-        # Preparar tabela bonita
-        df_tabela = df_analise[['AGENDA', 'CONFERENTE', 'ORIGEM', 'CATEGORIA', 'PEÇAS', 'META_TEMPO_MIN', 'DURAÇÃO_REAL_MIN', 'STATUS']].copy()
-        df_tabela['META_TEMPO'] = df_tabela['META_TEMPO_MIN'].apply(mins_to_text)
-        df_tabela['TEMPO_REAL'] = df_tabela['DURAÇÃO_REAL_MIN'].apply(mins_to_text)
+        st.markdown("<div class='bloco-header'>📊 Despacho de Cargas e Previsão de Fim</div>", unsafe_allow_html=True)
         
-        # Reordenar para esconder os minutos brutos
-        df_tabela = df_tabela[['AGENDA', 'CONFERENTE', 'ORIGEM', 'CATEGORIA', 'PEÇAS', 'META_TEMPO', 'TEMPO_REAL', 'STATUS']]
+        # Preparar tabela matadora
+        df_tabela = df_analise[['AGENDA', 'CONFERENTE', 'CATEGORIA', 'STATUS_FISICO', 'PEÇAS', 'META_TEMPO_MIN', 'DURAÇÃO_REAL_MIN', 'PREVISÃO FIM', 'SITUAÇÃO META']].copy()
+        df_tabela['META (Tempo)'] = df_tabela['META_TEMPO_MIN'].apply(mins_to_text)
+        df_tabela['GASTO (Tempo)'] = df_tabela['DURAÇÃO_REAL_MIN'].apply(mins_to_text)
         
-        st.dataframe(df_tabela, use_container_width=True, hide_index=True)
+        # Reordenar para esconder os minutos brutos da visão e focar no relógio
+        df_tabela = df_tabela[['AGENDA', 'CONFERENTE', 'CATEGORIA', 'STATUS_FISICO', 'PEÇAS', 'META (Tempo)', 'GASTO (Tempo)', 'PREVISÃO FIM', 'SITUAÇÃO META']]
         
-        # Gráfico de Dispersão (Desvio de Meta)
-        st.markdown("<div class='bloco-header'>⚖️ Análise de Desvio: Meta vs Realizado</div>", unsafe_allow_html=True)
-        df_grafico_conf = df_analise[df_analise['DURAÇÃO_REAL_MIN'] > 0]
-        
-        if not df_grafico_conf.empty:
-            fig_disp = px.scatter(df_grafico_conf, x="META_TEMPO_MIN", y="DURAÇÃO_REAL_MIN", 
-                                  color="STATUS", hover_data=['AGENDA', 'CONFERENTE'],
-                                  color_discrete_map={"✅ No Prazo": "#4CAF50", "🔴 Atrasado": "#F44336"},
-                                  labels={"META_TEMPO_MIN": "Meta de Tempo (Minutos)", "DURAÇÃO_REAL_MIN": "Tempo Gasto Real (Minutos)"})
-            # Adiciona a linha de tendência "Perfeita"
-            fig_disp.add_shape(type="line", line=dict(dash='dash', color='gray'),
-                               x0=0, y0=0, x1=df_grafico_conf['META_TEMPO_MIN'].max(), y1=df_grafico_conf['META_TEMPO_MIN'].max())
-            st.plotly_chart(fig_disp, use_container_width=True)
+        # Mapeamento de cor da tabela para ficar visual
+        def cor_status(val):
+            if '✅' in str(val): return 'color: #155724; background-color: #d4edda; font-weight: bold;'
+            if '🔴' in str(val) or '⚠️' in str(val): return 'color: #721c24; background-color: #f8d7da; font-weight: bold;'
+            if '⏳' in str(val): return 'color: #856404; background-color: #fff3cd; font-weight: bold;'
+            return ''
+
+        st.dataframe(df_tabela.style.applymap(cor_status, subset=['SITUAÇÃO META', 'PREVISÃO FIM']), use_container_width=True, hide_index=True)
         
     else:
-        st.warning("⚠️ Planilhas de Conferência não encontradas ou vazias.")
+        st.warning("⚠️ Planilhas de Conferência não encontradas ou vazias. Cheque os nomes das abas.")
