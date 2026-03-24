@@ -416,6 +416,10 @@ with tab2:
         df_tabela['META (Tempo)'] = df_tabela['META_TEMPO_MIN'].apply(mins_to_text)
         df_tabela['GASTO (Tempo)'] = df_tabela['DURAÇÃO_REAL_MIN'].apply(mins_to_text)
         
+        # Formatando Peças e SKU para não mostrar os decimais (.000)
+        df_tabela['PEÇAS'] = df_tabela['PEÇAS'].apply(lambda x: f"{int(x):,}".replace(",", "."))
+        df_tabela['SKU'] = df_tabela['SKU'].apply(lambda x: f"{int(x)}")
+        
         df_tabela = df_tabela[['AGENDA', 'CONFERENTE', 'CATEGORIA', 'STATUS_FISICO', 'PEÇAS', 'SKU', 'META (Tempo)', 'GASTO (Tempo)', 'PREVISÃO FIM', 'SITUAÇÃO META']]
         
         def cor_status(val):
