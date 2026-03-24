@@ -529,18 +529,19 @@ with tab2:
         st.warning("⚠️ Planilhas de Conferência desconectadas.")
 
 # -------------------------------------------------------------------------
-# ABA 3: RANKING DE CONFERENTES (HISTÓRICO BLINDADO)
+# ABA 3: RANKING DE CONFERENTES E INVESTIGAÇÃO DE CARGAS
 # -------------------------------------------------------------------------
 with tab3:
     st.caption("Acompanhamento histórico de performance, velocidade e aderência às metas da equipe.")
     
     if not df_fechamento.empty:
-        datas_disponiveis = df_fechamento['DATA'].unique()
+        datas_disponiveis = sorted(df_fechamento['DATA'].unique(), reverse=True)
         data_hist_sel = st.multiselect("Filtrar Período:", options=datas_disponiveis, default=datas_disponiveis)
         
         df_f = df_fechamento[df_fechamento['DATA'].isin(data_hist_sel)].copy()
         
         if not df_f.empty:
+            # Cálculos Base
             df_f['Desvio (Minutos)'] = df_f['REALIZADO MINUTOS'] - df_f['META MINUTOS']
             df_f['STATUS_REAL'] = df_f['Desvio (Minutos)'].apply(lambda x: 'ATRASADO' if x > 0 else 'NO PRAZO')
             
@@ -554,6 +555,7 @@ with tab3:
             ranking['% de Acerto'] = (ranking['No_Prazo'] / ranking['Cargas_Feitas']) * 100
             ranking = ranking.sort_values('% de Acerto', ascending=False)
             
+            # --- 1. GRÁFICOS GERAIS DA EQUIPE ---
             col1, col2 = st.columns(2)
             
             with col1:
@@ -566,7 +568,7 @@ with tab3:
                 
             with col2:
                 st.markdown("<div class='bloco-header'>Balanço de Tempo (Gargalo vs Ganho)</div>", unsafe_allow_html=True)
-                
+                st.caption("Verde = Tempo salvo. Vermelho = Tempo estourado em média.")
                 ranking_desvio = ranking.sort_values('Tempo_Medio_Desvio', ascending=False)
                 cores = ['#EF4444' if val > 0 else '#10B981' for val in ranking_desvio['Tempo_Medio_Desvio']]
                 
@@ -577,12 +579,53 @@ with tab3:
                 fig_desv.update_layout(yaxis_title="Minutos (Média de Desvio)", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
                 st.plotly_chart(fig_desv, use_container_width=True)
                 
-            st.markdown("<div class='bloco-header'>Detalhamento Analítico</div>", unsafe_allow_html=True)
+            # --- 2. TABELA GERAL ---
+            st.markdown("<div class='bloco-header'>Detalhamento Analítico Geral</div>", unsafe_allow_html=True)
             st.dataframe(ranking[['CONFERENTE', 'Cargas_Feitas', 'No_Prazo', 'Atrasos', '% de Acerto', 'Tempo_Medio_Desvio']].style.format({
                 '% de Acerto': '{:.1f}%',
                 'Tempo_Medio_Desvio': '{:.1f} min'
             }), use_container_width=True, hide_index=True)
+
+            st.markdown("---")
             
+            # --- 3. INVESTIGADOR DE CONFERENTE (RAIO-X INDIVIDUAL) ---
+            st.markdown("<div class='bloco-header'>🔍 Investigador de Conferente (Raio-X de Cargas)</div>", unsafe_allow_html=True)
+            
+            lista_conferentes = ["Selecione um Conferente..."] + sorted(df_f['CONFERENTE'].unique())
+            conferente_alvo = st.selectbox("Escolha quem você quer investigar:", lista_conferentes)
+            
+            if conferente_alvo != "Selecione um Conferente...":
+                # Filtra só os dados da pessoa
+                df_individual = df_f[df_f['CONFERENTE'] == conferente_alvo].copy()
+                
+                c_k1, c_k2, c_k3 = st.columns(3)
+                qtd_ok = df_individual[df_individual['STATUS_REAL'] == 'NO PRAZO'].shape[0]
+                qtd_bad = df_individual[df_individual['STATUS_REAL'] == 'ATRASADO'].shape[0]
+                saldo_total_min = df_individual['Desvio (Minutos)'].sum()
+                
+                c_k1.metric("Cargas no Prazo", qtd_ok)
+                c_k2.metric("Cargas Estouradas", qtd_bad)
+                c_k3.metric("Balanço Total (Minutos)", f"{saldo_total_min:.1f} min", 
+                            delta=f"{saldo_total_min:.1f} min", delta_color="inverse")
+                
+                # Prepara tabela bonita de cargas
+                st.markdown(f"**Histórico de agendas de {conferente_alvo} (Ordenadas por Data)**")
+                
+                df_detalhe = df_individual[['DATA', 'AGENDA', 'CATEGORIA', 'PEÇAS', 'META MINUTOS', 'REALIZADO MINUTOS', 'Desvio (Minutos)', 'STATUS_REAL']].copy()
+                df_detalhe['META (Tempo)'] = df_detalhe['META MINUTOS'].apply(mins_to_text)
+                df_detalhe['REAL (Tempo)'] = df_detalhe['REALIZADO MINUTOS'].apply(mins_to_text)
+                df_detalhe['Desvio (Minutos)'] = df_detalhe['Desvio (Minutos)'].round(1)
+                
+                # Reordena colunas pra ficar lindo
+                df_detalhe = df_detalhe[['DATA', 'AGENDA', 'CATEGORIA', 'PEÇAS', 'META (Tempo)', 'REAL (Tempo)', 'Desvio (Minutos)', 'STATUS_REAL']]
+                
+                def cor_status_indiv(val):
+                    if 'NO PRAZO' in str(val): return 'color: #065F46; background-color: #D1FAE5; font-weight: 600;'
+                    if 'ATRASADO' in str(val): return 'color: #991B1B; background-color: #FEE2E2; font-weight: 600;'
+                    return ''
+
+                st.dataframe(df_detalhe.style.applymap(cor_status_indiv, subset=['STATUS_REAL']), use_container_width=True, hide_index=True)
+                
         else:
             st.info("Nenhuma data selecionada.")
     else:
