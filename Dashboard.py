@@ -41,18 +41,16 @@ def exibir_kpi(titulo, valor, subtitulo="", cor="#0086FF"):
 def limpa_numero_br(valor):
     if pd.isna(valor) or str(valor).strip() in ['', 'NAN', 'NULL', 'NONE']: return 0
     v = str(valor).strip()
-    # Se tiver vírgula (ex: 1.234,56)
     if ',' in v:
         v = v.replace('.', '').replace(',', '.')
     else:
-        # Se só tiver ponto, é milhar do Brasil (ex: 4.800 vira 4800)
         v = v.replace('.', '')
     try:
         return float(v)
     except:
         return 0
 
-# Conversões de Tempo
+# --- CONVERSÕES DE TEMPO ---
 def time_to_mins(t_str):
     if pd.isna(t_str) or str(t_str).strip() == '': return 0
     try:
@@ -64,11 +62,25 @@ def time_to_mins(t_str):
 def mins_to_text(mins):
     if pd.isna(mins) or mins <= 0: return "0m"
     total_m = int(round(mins))
-    if total_m == 0: return "< 1m" # Pra não mostrar 0m se a carga for muito rápida
+    if total_m == 0: return "< 1m" 
     h = total_m // 60
     m = total_m % 60
     if h > 0: return f"{h}h {m}m"
     return f"{m}m"
+
+# --- GRAVAR NO COFRE ---
+def salvar_historico_fechamento(df_para_salvar):
+    try:
+        cred_dict = json.loads(st.secrets["google_json"])
+        creds = Credentials.from_service_account_info(cred_dict, scopes=["https://www.googleapis.com/auth/spreadsheets"])
+        client = gspread.authorize(creds)
+        sh2 = client.open_by_key('1bj5vIu8LOIWqaW5evogwQeyrJd9yj1iQkXHbJKvTeks')
+        aba = sh2.worksheet("FECHAMENTO")
+        aba.append_rows(df_para_salvar.values.tolist())
+        return True
+    except Exception as e:
+        st.error(f"Erro ao salvar na planilha: {e}")
+        return False
 
 # =========================================================================
 # 2. MOTOR DE DADOS MULTI-PLANILHAS
@@ -90,7 +102,6 @@ def carregar_dados_armazenagem():
         df['NU_ETIQUETA'] = df['NU_ETIQUETA'].astype(str).str.strip()
         df['AGENDA'] = df['AGENDA'].astype(str).str.strip().str.upper()
         df['PRODUTO'] = df['PRODUTO'].astype(str).str.strip()
-        # Aplica a vacina aqui pra não perdemos peças na armazenagem também!
         df['QT_PRODUTO'] = df['QT_PRODUTO'].apply(limpa_numero_br)
         df['SITUACAO'] = df['SITUACAO'].astype(str).str.strip()
         df['OPERADOR'] = df['OPERADOR'].astype(str).str.strip().str.upper()
@@ -129,38 +140,44 @@ def carregar_dados_conferencia():
         
         # --- 1. HISTÓRICO (BASE DE DADOS) ---
         aba_hist = next((aba for aba in todas_abas if "BASE DE DADOS" in aba.title.upper()), None)
-        if not aba_hist: raise ValueError("Não encontrei a aba 'Base de Dados'.")
-            
-        data_hist = aba_hist.get("Q:W")
-        df_hist = pd.DataFrame(data_hist[1:], columns=data_hist[0])
-        df_hist.columns = df_hist.columns.str.strip().str.upper()
-        
-        # APLICANDO A VACINA NO HISTÓRICO
-        if 'TMP APC' in df_hist.columns: df_hist['TMP APC'] = df_hist['TMP APC'].apply(limpa_numero_br)
-        if 'PEÇAS' in df_hist.columns: df_hist['PEÇAS'] = df_hist['PEÇAS'].apply(limpa_numero_br)
-        if 'SKU' in df_hist.columns: df_hist['SKU'] = df_hist['SKU'].apply(limpa_numero_br)
+        if aba_hist:
+            data_hist = aba_hist.get("Q:W")
+            df_hist = pd.DataFrame(data_hist[1:], columns=data_hist[0])
+            df_hist.columns = df_hist.columns.str.strip().str.upper()
+            if 'TMP APC' in df_hist.columns: df_hist['TMP APC'] = df_hist['TMP APC'].apply(limpa_numero_br)
+            if 'PEÇAS' in df_hist.columns: df_hist['PEÇAS'] = df_hist['PEÇAS'].apply(limpa_numero_br)
+            if 'SKU' in df_hist.columns: df_hist['SKU'] = df_hist['SKU'].apply(limpa_numero_br)
+        else: df_hist = pd.DataFrame()
             
         # --- 2. PLANILHA DIA ATUAL ---
         aba_hoje = next((aba for aba in todas_abas if "DIA ATUAL" in aba.title.upper()), None)
-        if not aba_hoje: raise ValueError("Não encontrei a aba 'Dia Atual'.")
+        if aba_hoje:
+            data_hoje = aba_hoje.get("A:I")
+            df_hoje = pd.DataFrame(data_hoje[1:], columns=data_hoje[0])
+            df_hoje.columns = df_hoje.columns.str.strip().str.upper()
+            if 'STATUS' in df_hoje.columns: df_hoje.rename(columns={'STATUS': 'STATUS_FISICO'}, inplace=True)
+            if 'PEÇAS' in df_hoje.columns: df_hoje['PEÇAS'] = df_hoje['PEÇAS'].apply(limpa_numero_br)
+            if 'PÇS PENDENTES' in df_hoje.columns: df_hoje['PÇS PENDENTES'] = df_hoje['PÇS PENDENTES'].apply(limpa_numero_br)
+            if 'SKU' in df_hoje.columns: df_hoje['SKU'] = df_hoje['SKU'].apply(limpa_numero_br)
+            if 'DURAÇÃO CARGA' in df_hoje.columns: df_hoje['DURAÇÃO CARGA'] = df_hoje['DURAÇÃO CARGA'].astype(str).str.strip()
+        else: df_hoje = pd.DataFrame()
+
+        # --- 3. COFRE DE FECHAMENTO ---
+        aba_fechamento = next((aba for aba in todas_abas if "FECHAMENTO" in aba.title.upper()), None)
+        if aba_fechamento:
+            data_fech = aba_fechamento.get_all_values()
+            if len(data_fech) > 1:
+                df_fechamento = pd.DataFrame(data_fech[1:], columns=data_fech[0])
+                df_fechamento.columns = df_fechamento.columns.str.strip().str.upper()
+                df_fechamento['META MINUTOS'] = pd.to_numeric(df_fechamento['META MINUTOS'], errors='coerce').fillna(0)
+                df_fechamento['REALIZADO MINUTOS'] = pd.to_numeric(df_fechamento['REALIZADO MINUTOS'], errors='coerce').fillna(0)
+            else: df_fechamento = pd.DataFrame()
+        else: df_fechamento = pd.DataFrame()
             
-        data_hoje = aba_hoje.get("A:I")
-        df_hoje = pd.DataFrame(data_hoje[1:], columns=data_hoje[0])
-        df_hoje.columns = df_hoje.columns.str.strip().str.upper()
-        
-        if 'STATUS' in df_hoje.columns: df_hoje.rename(columns={'STATUS': 'STATUS_FISICO'}, inplace=True)
-        else: df_hoje['STATUS_FISICO'] = 'INDEFINIDO'
-        
-        # APLICANDO A VACINA NO HOJE
-        if 'PEÇAS' in df_hoje.columns: df_hoje['PEÇAS'] = df_hoje['PEÇAS'].apply(limpa_numero_br)
-        if 'PÇS PENDENTES' in df_hoje.columns: df_hoje['PÇS PENDENTES'] = df_hoje['PÇS PENDENTES'].apply(limpa_numero_br)
-        if 'SKU' in df_hoje.columns: df_hoje['SKU'] = df_hoje['SKU'].apply(limpa_numero_br)
-        if 'DURAÇÃO CARGA' in df_hoje.columns: df_hoje['DURAÇÃO CARGA'] = df_hoje['DURAÇÃO CARGA'].astype(str).str.strip()
-            
-        return df_hist, df_hoje
+        return df_hist, df_hoje, df_fechamento
     except Exception as e:
         st.error(f"Erro Conferência: {e}")
-        return pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
 # =========================================================================
 # FUNÇÃO DO POP-UP (RAIO-X DA HORA)
@@ -190,12 +207,12 @@ def popup_detalhe_hora(hora, df_base, data_sel):
 # 3. INTERFACE E ABAS
 # =========================================================================
 df_armz = carregar_dados_armazenagem()
-df_hist_conf, df_hoje_conf = carregar_dados_conferencia()
+df_hist_conf, df_hoje_conf, df_fechamento = carregar_dados_conferencia()
 
-tab1, tab2 = st.tabs(["📦 Torre de Armazenagem (Doca)", "🔎 Torre de Conferência (Metas)"])
+tab1, tab2, tab3 = st.tabs(["📦 Torre de Armazenagem (Doca)", "🔎 Torre de Conferência (Metas)", "🏅 Desempenho da Equipe"])
 
 # -------------------------------------------------------------------------
-# ABA 1: ARMAZENAGEM (IGUAL)
+# ABA 1: ARMAZENAGEM
 # -------------------------------------------------------------------------
 with tab1:
     if not df_armz.empty:
@@ -214,11 +231,8 @@ with tab1:
         
         if modo_visao == "Líquida (Apenas do Dia)":
             df_base_armz = df_hoje_c.copy()
-            saldo_inicial = 0
         else:
             df_base_armz = pd.concat([df_hoje_c, df_hoje_a]).drop_duplicates(subset=['NU_ETIQUETA'])
-            mask_heranca = (df_armz_filtrado['Data_Conf'] < data_sel) & ((df_armz_filtrado['Data_Armz'] >= data_sel) | (df_armz_filtrado['SITUACAO'] == '23'))
-            saldo_inicial = df_armz_filtrado[mask_heranca]['NU_ETIQUETA'].nunique()
 
         fantasmas = ['', 'NAN', 'NONE', 'NULL']
         conferentes_validos = sorted([c for c in df_base_armz['CONFERENTE'].unique() if pd.notna(c) and c not in fantasmas])
@@ -234,18 +248,16 @@ with tab1:
         
         c1, c2, c3, c4 = st.columns(4)
         qtd_etiquetas_armz = df_producao_equipe['NU_ETIQUETA'].nunique()
-        qtd_pecas_armz = df_producao_equipe['QT_PRODUTO'].sum()
         qtd_pendentes_doca = df_base_armz[df_base_armz['SITUACAO'] == '23']['NU_ETIQUETA'].nunique()
         if modo_visao == "Global (Incluir Herança)":
             qtd_pendentes_doca += df_armz_filtrado[(df_armz_filtrado['Data_Conf'] < data_sel) & (df_armz_filtrado['SITUACAO'] == '23') & (df_armz_filtrado['CONFERENTE'].isin(conf_sel))]['NU_ETIQUETA'].nunique()
             
         espera_valida = df_producao_equipe[df_producao_equipe['Tempo_Espera_Minutos'] > 0]['Tempo_Espera_Minutos']
         sla_medio = espera_valida.mean() if not espera_valida.empty else 0
-        txt_sla = f"{int(sla_medio // 60)}h {int(sla_medio % 60)}m"
         
         with c1: exibir_kpi("Armazenados (Sit. 25)", f"{qtd_etiquetas_armz:,.0f}", "Equipe selecionada", "#0086FF")
         with c2: exibir_kpi("Pendências (Sit. 23)", f"{qtd_pendentes_doca:,.0f}", "Fila total da Doca", "#E74C3C")
-        with c3: exibir_kpi("SLA Médio Doca", txt_sla, "Tempo em espera", "#F44336" if sla_medio > 120 else "#4CAF50")
+        with c3: exibir_kpi("SLA Médio Doca", mins_to_text(sla_medio), "Tempo em espera", "#F44336" if sla_medio > 120 else "#4CAF50")
         with c4: exibir_kpi("Operadores Ativos", str(len(op_sel)), "Filtro aplicado", "#FF9800")
 
         col_tit, col_sel = st.columns([7, 3])
@@ -292,101 +304,57 @@ with tab1:
     else: st.warning("Sem dados de Armazenagem.")
 
 # -------------------------------------------------------------------------
-# ABA 2: CONFERÊNCIA (O SEU NOVO MOTOR DE METAS PREDITIVAS)
+# ABA 2: CONFERÊNCIA (METAS PREDITIVAS E AUTO-SAVE)
 # -------------------------------------------------------------------------
 with tab2:
     if not df_hist_conf.empty and not df_hoje_conf.empty:
         st.title("🎯 Torre de Conferência e Previsão")
-        st.caption("Cálculo preditivo inteligente: Busca no histórico as cargas com o mesmo perfil (Fornecedor, Categoria, Peças e SKUs).")
+        st.caption("Cálculo preditivo inteligente: Busca no histórico as cargas com o mesmo perfil.")
         
-        # Taxa global do CD (Plano de emergência máximo)
         taxa_global_cd = df_hist_conf['TMP APC'].sum() / df_hist_conf['PEÇAS'].sum() if df_hist_conf['PEÇAS'].sum() > 0 else 1.0
 
-        # O Algoritmo de Cargas Gêmeas (Turbinado com Categoria)
         def calcular_meta_inteligente(row, df_historico):
             forn = str(row.get('ORIGEM', '')).strip().upper()
             linha = str(row.get('CATEGORIA', '')).strip().upper()
             pecas = row.get('PEÇAS', 0)
             sku = row.get('SKU', 0)
             
-            # Margens de "O que é parecido?"
             min_pecas, max_pecas = pecas * 0.7, pecas * 1.3
             min_sku, max_sku = min(sku * 0.7, sku - 2), max(sku * 1.3, sku + 2)
 
-            # -----------------------------------------------------------------
-            # PLANO A: Gêmea Perfeita (Mesmo Fornecedor + Mesma Categoria)
-            # -----------------------------------------------------------------
-            df_base_exata = df_historico[(df_historico['FORNECEDOR'].str.upper() == forn) & 
-                                         (df_historico['LINHA'].str.upper() == linha)]
-            
+            df_base_exata = df_historico[(df_historico['FORNECEDOR'].str.upper() == forn) & (df_historico['LINHA'].str.upper() == linha)]
             if not df_base_exata.empty:
-                # Tenta Peça e SKU parecidos
-                df_gemeas = df_base_exata[(df_base_exata['PEÇAS'] >= min_pecas) & (df_base_exata['PEÇAS'] <= max_pecas) & 
-                                          (df_base_exata['SKU'] >= min_sku) & (df_base_exata['SKU'] <= max_sku)]
-                if not df_gemeas.empty:
-                    return df_gemeas['TMP APC'].mean()
-                
-                # Tenta só Peça parecida
+                df_gemeas = df_base_exata[(df_base_exata['PEÇAS'] >= min_pecas) & (df_base_exata['PEÇAS'] <= max_pecas) & (df_base_exata['SKU'] >= min_sku) & (df_base_exata['SKU'] <= max_sku)]
+                if not df_gemeas.empty: return df_gemeas['TMP APC'].mean()
                 df_primas = df_base_exata[(df_base_exata['PEÇAS'] >= min_pecas) & (df_base_exata['PEÇAS'] <= max_pecas)]
-                if not df_primas.empty:
-                    return df_primas['TMP APC'].mean()
-                
-                # Usa a média do Fornecedor + Categoria
-                if df_base_exata['PEÇAS'].sum() > 0:
-                    velocidade = df_base_exata['TMP APC'].sum() / df_base_exata['PEÇAS'].sum()
-                    return pecas * velocidade
+                if not df_primas.empty: return df_primas['TMP APC'].mean()
+                if df_base_exata['PEÇAS'].sum() > 0: return pecas * (df_base_exata['TMP APC'].sum() / df_base_exata['PEÇAS'].sum())
 
-            # -----------------------------------------------------------------
-            # PLANO B: Irmã de Categoria (Fornecedor Novo, mas Categoria Conhecida)
-            # -----------------------------------------------------------------
             df_base_categoria = df_historico[df_historico['LINHA'].str.upper() == linha]
-            
             if not df_base_categoria.empty:
-                # Tenta achar outra carga da mesma categoria com tamanho/SKU parecido (Ex: Outra Madeira)
-                df_gemeas_cat = df_base_categoria[(df_base_categoria['PEÇAS'] >= min_pecas) & (df_base_categoria['PEÇAS'] <= max_pecas) & 
-                                                  (df_base_categoria['SKU'] >= min_sku) & (df_base_categoria['SKU'] <= max_sku)]
-                if not df_gemeas_cat.empty:
-                    return df_gemeas_cat['TMP APC'].mean()
-                
-                # Tenta só peças parecidas na mesma categoria
+                df_gemeas_cat = df_base_categoria[(df_base_categoria['PEÇAS'] >= min_pecas) & (df_base_categoria['PEÇAS'] <= max_pecas) & (df_base_categoria['SKU'] >= min_sku) & (df_base_categoria['SKU'] <= max_sku)]
+                if not df_gemeas_cat.empty: return df_gemeas_cat['TMP APC'].mean()
                 df_primas_cat = df_base_categoria[(df_base_categoria['PEÇAS'] >= min_pecas) & (df_base_categoria['PEÇAS'] <= max_pecas)]
-                if not df_primas_cat.empty:
-                    return df_primas_cat['TMP APC'].mean()
-                
-                # Usa a média geral da CATEGORIA (Ex: Velocidade média de toda a Madeira do CD)
-                if df_base_categoria['PEÇAS'].sum() > 0:
-                    velocidade_cat = df_base_categoria['TMP APC'].sum() / df_base_categoria['PEÇAS'].sum()
-                    return pecas * velocidade_cat
+                if not df_primas_cat.empty: return df_primas_cat['TMP APC'].mean()
+                if df_base_categoria['PEÇAS'].sum() > 0: return pecas * (df_base_categoria['TMP APC'].sum() / df_base_categoria['PEÇAS'].sum())
 
-            # -----------------------------------------------------------------
-            # PLANO C: Global (Desespero - Fornecedor e Categoria desconhecidos)
-            # -----------------------------------------------------------------
             return pecas * taxa_global_cd
 
-        # Prepara a base de hoje
         df_hoje_conf['DURAÇÃO_REAL_MIN'] = df_hoje_conf['DURAÇÃO CARGA'].apply(time_to_mins)
         df_hoje_conf['STATUS_FISICO'] = df_hoje_conf['STATUS_FISICO'].str.strip().str.upper()
-        
-        # O Motor entra em Ação aqui: Aplica a IA em todas as cargas
         df_hoje_conf['META_TEMPO_MIN'] = df_hoje_conf.apply(lambda row: calcular_meta_inteligente(row, df_hist_conf), axis=1)
         
-        # Cálculos de Previsão de Fim
         agora = pd.Timestamp.now(tz='America/Sao_Paulo')
-        
         def calcular_previsao(row):
             status = row['STATUS_FISICO']
             if status == 'OK': return "✅ Finalizado"
-            
             restante = row['META_TEMPO_MIN'] - row['DURAÇÃO_REAL_MIN']
             if restante < 0: return "⚠️ Já Estourou"
-            
-            hora_fim = agora + pd.Timedelta(minutes=restante)
-            return hora_fim.strftime("%H:%M")
+            return (agora + pd.Timedelta(minutes=restante)).strftime("%H:%M")
             
         def calcular_situacao_meta(row):
             status = row['STATUS_FISICO']
-            if status == 'OK':
-                return "✅ No Prazo" if row['DURAÇÃO_REAL_MIN'] <= row['META_TEMPO_MIN'] else "🔴 Atrasou (Finalizado)"
+            if status == 'OK': return "✅ No Prazo" if row['DURAÇÃO_REAL_MIN'] <= row['META_TEMPO_MIN'] else "🔴 Atrasou (Finalizado)"
             else:
                 if row['DURAÇÃO_REAL_MIN'] > row['META_TEMPO_MIN']: return "🔴 Atrasado (Em Processo)"
                 elif status == 'EM PROCESSO': return "⏳ No Ritmo"
@@ -395,12 +363,10 @@ with tab2:
         df_hoje_conf['PREVISÃO FIM'] = df_hoje_conf.apply(calcular_previsao, axis=1)
         df_hoje_conf['SITUAÇÃO META'] = df_hoje_conf.apply(calcular_situacao_meta, axis=1)
         
-        # KPIs da Aba
         c1, c2, c3, c4 = st.columns(4)
         cargas_totais = len(df_hoje_conf)
         cargas_ok = df_hoje_conf[df_hoje_conf['STATUS_FISICO'] == 'OK'].shape[0]
         cargas_fila = df_hoje_conf[df_hoje_conf['STATUS_FISICO'].isin(['EM DOCA', 'P-EXTERNO'])].shape[0]
-        
         acertos = df_hoje_conf[df_hoje_conf['SITUAÇÃO META'].isin(['✅ No Prazo', '⏳ No Ritmo', '⏸️ Aguardando Início'])].shape[0]
         perc_acerto = (acertos / cargas_totais) * 100 if cargas_totais > 0 else 0
         
@@ -411,15 +377,11 @@ with tab2:
         
         st.markdown("<div class='bloco-header'>📊 Despacho de Cargas e Previsão de Fim</div>", unsafe_allow_html=True)
         
-        # Organizando a Tabela Final
         df_tabela = df_hoje_conf[['AGENDA', 'CONFERENTE', 'CATEGORIA', 'STATUS_FISICO', 'PEÇAS', 'SKU', 'META_TEMPO_MIN', 'DURAÇÃO_REAL_MIN', 'PREVISÃO FIM', 'SITUAÇÃO META']].copy()
         df_tabela['META (Tempo)'] = df_tabela['META_TEMPO_MIN'].apply(mins_to_text)
         df_tabela['GASTO (Tempo)'] = df_tabela['DURAÇÃO_REAL_MIN'].apply(mins_to_text)
-        
-        # Formatando Peças e SKU para não mostrar os decimais (.000)
         df_tabela['PEÇAS'] = df_tabela['PEÇAS'].apply(lambda x: f"{int(x):,}".replace(",", "."))
         df_tabela['SKU'] = df_tabela['SKU'].apply(lambda x: f"{int(x)}")
-        
         df_tabela = df_tabela[['AGENDA', 'CONFERENTE', 'CATEGORIA', 'STATUS_FISICO', 'PEÇAS', 'SKU', 'META (Tempo)', 'GASTO (Tempo)', 'PREVISÃO FIM', 'SITUAÇÃO META']]
         
         def cor_status(val):
@@ -429,6 +391,116 @@ with tab2:
             return ''
 
         st.dataframe(df_tabela.style.applymap(cor_status, subset=['SITUAÇÃO META', 'PREVISÃO FIM']), use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+        st.markdown("### 🤖 Piloto Automático de Fechamento")
         
+        hora_atual = agora.strftime("%H:%M")
+        data_hoje_str = agora.strftime('%d/%m/%Y')
+        
+        ja_salvou_hoje = False
+        if not df_fechamento.empty and data_hoje_str in df_fechamento['DATA'].values:
+            ja_salvou_hoje = True
+            
+        if ja_salvou_hoje:
+            st.success(f"✅ O fechamento de hoje ({data_hoje_str}) já foi gravado no cofre automaticamente!")
+        else:
+            if hora_atual >= "17:20":
+                st.info(f"🕒 Passou das 17:20! O Robô está iniciando a gravação do turno...")
+                df_para_salvar = df_hoje_conf[(df_hoje_conf['STATUS_FISICO'] == 'OK') & (df_hoje_conf['DURAÇÃO_REAL_MIN'] > 0)].copy()
+                
+                if not df_para_salvar.empty:
+                    df_export = pd.DataFrame({
+                        'DATA': data_hoje_str, 'AGENDA': df_para_salvar['AGENDA'], 'CONFERENTE': df_para_salvar['CONFERENTE'],
+                        'CATEGORIA': df_para_salvar['CATEGORIA'], 'PEÇAS': df_para_salvar['PEÇAS'],
+                        'META MINUTOS': df_para_salvar['META_TEMPO_MIN'].round(2), 'REALIZADO MINUTOS': df_para_salvar['DURAÇÃO_REAL_MIN'].round(2),
+                        'RESULTADO': df_para_salvar['SITUAÇÃO META'].apply(lambda x: 'NO PRAZO' if '✅' in x else 'ATRASADO')
+                    })
+                    with st.spinner("Gravando no Cofre de Dados..."):
+                        sucesso = salvar_historico_fechamento(df_export)
+                        if sucesso:
+                            st.success(f"🎉 Robô salvou {len(df_export)} cargas no histórico com sucesso!")
+                            st.cache_data.clear()
+                            st.rerun()
+                else:
+                    st.warning("Deu a hora do fechamento, mas não havia nenhuma carga com status 'OK' e tempo registrado.")
+            else:
+                st.info(f"⏳ O robô está aguardando dar **17:20** para salvar os resultados. (Hora atual: {hora_atual})")
+                
+                if st.button("⚠️ Forçar Gravação Agora", type="secondary"):
+                    df_para_salvar = df_hoje_conf[(df_hoje_conf['STATUS_FISICO'] == 'OK') & (df_hoje_conf['DURAÇÃO_REAL_MIN'] > 0)].copy()
+                    if not df_para_salvar.empty:
+                        df_export = pd.DataFrame({
+                            'DATA': data_hoje_str, 'AGENDA': df_para_salvar['AGENDA'], 'CONFERENTE': df_para_salvar['CONFERENTE'],
+                            'CATEGORIA': df_para_salvar['CATEGORIA'], 'PEÇAS': df_para_salvar['PEÇAS'],
+                            'META MINUTOS': df_para_salvar['META_TEMPO_MIN'].round(2), 'REALIZADO MINUTOS': df_para_salvar['DURAÇÃO_REAL_MIN'].round(2),
+                            'RESULTADO': df_para_salvar['SITUAÇÃO META'].apply(lambda x: 'NO PRAZO' if '✅' in x else 'ATRASADO')
+                        })
+                        sucesso = salvar_historico_fechamento(df_export)
+                        if sucesso:
+                            st.cache_data.clear()
+                            st.rerun()
+                    else:
+                        st.warning("Nenhuma carga finalizada para salvar.")
     else:
-        st.warning("⚠️ Planilhas de Conferência não encontradas ou vazias. Cheque os nomes das abas.")
+        st.warning("⚠️ Planilhas de Conferência não encontradas ou vazias.")
+
+# -------------------------------------------------------------------------
+# ABA 3: RANKING DE CONFERENTES (HISTÓRICO)
+# -------------------------------------------------------------------------
+with tab3:
+    st.title("🏅 Desempenho Histórico: Equipe de Conferência")
+    
+    if not df_fechamento.empty:
+        datas_disponiveis = df_fechamento['DATA'].unique()
+        data_hist_sel = st.multiselect("Filtrar por Data do Histórico:", options=datas_disponiveis, default=datas_disponiveis)
+        
+        df_f = df_fechamento[df_fechamento['DATA'].isin(data_hist_sel)].copy()
+        
+        if not df_f.empty:
+            df_f['Desvio (Minutos)'] = df_f['REALIZADO MINUTOS'] - df_f['META MINUTOS']
+            
+            ranking = df_f.groupby('CONFERENTE').agg(
+                Cargas_Feitas=('AGENDA', 'count'),
+                Atrasos=('RESULTADO', lambda x: (x == 'ATRASADO').sum()),
+                No_Prazo=('RESULTADO', lambda x: (x == 'NO PRAZO').sum()),
+                Tempo_Medio_Desvio=('Desvio (Minutos)', 'mean')
+            ).reset_index()
+            
+            ranking['% de Acerto'] = (ranking['No_Prazo'] / ranking['Cargas_Feitas']) * 100
+            ranking = ranking.sort_values('% de Acerto', ascending=False)
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("#### 🏆 Top Conferentes (% de Metas Batidas)")
+                fig_bar = px.bar(ranking, x='CONFERENTE', y='% de Acerto', text_auto='.1f', 
+                                 color='% de Acerto', color_continuous_scale='Greens',
+                                 labels={'% de Acerto': 'Taxa de Acerto (%)'})
+                fig_bar.update_layout(yaxis=dict(range=[0, 100]), coloraxis_showscale=False)
+                st.plotly_chart(fig_bar, use_container_width=True)
+                
+            with col2:
+                st.markdown("#### ⏳ Os Vilões do Relógio (Tempo Médio de Atraso)")
+                st.caption("Barras vermelhas indicam tempo estourado. Verdes indicam agilidade.")
+                
+                ranking_desvio = ranking.sort_values('Tempo_Medio_Desvio', ascending=False)
+                cores = ['#F44336' if val > 0 else '#4CAF50' for val in ranking_desvio['Tempo_Medio_Desvio']]
+                
+                fig_desv = go.Figure(go.Bar(
+                    x=ranking_desvio['CONFERENTE'], y=ranking_desvio['Tempo_Medio_Desvio'], 
+                    marker_color=cores, text=ranking_desvio['Tempo_Medio_Desvio'].round(1), textposition='auto'
+                ))
+                fig_desv.update_layout(yaxis_title="Minutos (Média de Desvio)")
+                st.plotly_chart(fig_desv, use_container_width=True)
+                
+            st.markdown("#### 📋 Detalhamento da Equipe")
+            st.dataframe(ranking.style.format({
+                '% de Acerto': '{:.1f}%',
+                'Tempo_Medio_Desvio': '{:.1f} min'
+            }), use_container_width=True, hide_index=True)
+            
+        else:
+            st.info("Nenhuma data selecionada.")
+    else:
+        st.info("📭 Nenhum dado de fechamento encontrado. Lembre-se de criar a aba 'FECHAMENTO' na planilha do Google Sheets.")
