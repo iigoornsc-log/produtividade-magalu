@@ -108,25 +108,49 @@ def carregar_dados_conferencia():
         client = gspread.authorize(creds)
         
         sh2 = client.open_by_key('1bj5vIu8LOIWqaW5evogwQeyrJd9yj1iQkXHbJKvTeks')
+        todas_abas = sh2.worksheets()
         
-        # Histórico
-        ws_hist = sh2.worksheet("Base de Dados")
-        data_hist = ws_hist.get_all_values()
+        # --- 1. HISTÓRICO (BASE DE DADOS) ---
+        # Acha a aba independente de letras maiúsculas ou espaços sobrando
+        aba_hist = next((aba for aba in todas_abas if "BASE DE DADOS" in aba.title.upper()), None)
+        if not aba_hist:
+            raise ValueError("Não encontrei a aba 'Base de Dados' na planilha 2.")
+            
+        # Puxa estritamente das colunas Q até W como você pediu!
+        data_hist = aba_hist.get("Q:W")
+        if not data_hist:
+            raise ValueError("Colunas Q:W vazias na aba Base de Dados.")
+            
         df_hist = pd.DataFrame(data_hist[1:], columns=data_hist[0])
         df_hist.columns = df_hist.columns.str.strip().str.upper()
-        df_hist['TMP APC'] = pd.to_numeric(df_hist['TMP APC'], errors='coerce').fillna(0)
-        df_hist['PEÇAS'] = pd.to_numeric(df_hist['PEÇAS'], errors='coerce').fillna(0)
         
-        # Hoje
-        ws_hoje = sh2.worksheet("Planilha Dia Atual")
-        data_hoje = ws_hoje.get_all_values()
+        if 'TMP APC' in df_hist.columns:
+            df_hist['TMP APC'] = pd.to_numeric(df_hist['TMP APC'], errors='coerce').fillna(0)
+        if 'PEÇAS' in df_hist.columns:
+            df_hist['PEÇAS'] = pd.to_numeric(df_hist['PEÇAS'], errors='coerce').fillna(0)
+            
+        # --- 2. PLANILHA DIA ATUAL ---
+        aba_hoje = next((aba for aba in todas_abas if "DIA ATUAL" in aba.title.upper()), None)
+        if not aba_hoje:
+            raise ValueError("Não encontrei a aba 'Dia Atual' na planilha 2.")
+            
+        # Puxa estritamente das colunas A até H
+        data_hoje = aba_hoje.get("A:H")
+        if not data_hoje:
+            raise ValueError("Colunas A:H vazias na aba Dia Atual.")
+            
         df_hoje = pd.DataFrame(data_hoje[1:], columns=data_hoje[0])
         df_hoje.columns = df_hoje.columns.str.strip().str.upper()
-        df_hoje['PEÇAS'] = pd.to_numeric(df_hoje['PEÇAS'], errors='coerce').fillna(0)
-        df_hoje['PÇS PENDENTES'] = pd.to_numeric(df_hoje['PÇS PENDENTES'], errors='coerce').fillna(0)
-        df_hoje['DURAÇÃO CARGA'] = df_hoje['DURAÇÃO CARGA'].astype(str).str.strip()
         
+        if 'PEÇAS' in df_hoje.columns:
+            df_hoje['PEÇAS'] = pd.to_numeric(df_hoje['PEÇAS'], errors='coerce').fillna(0)
+        if 'PÇS PENDENTES' in df_hoje.columns:
+            df_hoje['PÇS PENDENTES'] = pd.to_numeric(df_hoje['PÇS PENDENTES'], errors='coerce').fillna(0)
+        if 'DURAÇÃO CARGA' in df_hoje.columns:
+            df_hoje['DURAÇÃO CARGA'] = df_hoje['DURAÇÃO CARGA'].astype(str).str.strip()
+            
         return df_hist, df_hoje
+        
     except Exception as e:
         st.error(f"Erro Conferência: {e}")
         return pd.DataFrame(), pd.DataFrame()
