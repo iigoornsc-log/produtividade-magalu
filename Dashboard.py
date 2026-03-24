@@ -8,32 +8,103 @@ import json
 from datetime import datetime
 
 # =========================================================================
-# 1. CONFIGURAÇÕES INICIAIS E CSS
+# 1. CONFIGURAÇÕES INICIAIS E FRONT-END SÊNIOR (TEMA MAGALU)
 # =========================================================================
-st.set_page_config(page_title="Torre de Controle | Logística", page_icon="⚡️", layout="wide")
+st.set_page_config(page_title="Torre de Controle | Magalu", page_icon="📦", layout="wide")
 
 st.markdown("""
 <style>
-    .stApp { background-color: #F8F9FA; }
-    .kpi-card {
-        background-color: #FFFFFF; border-radius: 12px; padding: 20px;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.04); border-left: 5px solid #0086FF;
-        transition: transform 0.2s; margin-bottom: 20px;
+    /* Reset e Fundo Geral */
+    .stApp { 
+        background-color: #F4F6F9; 
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
-    .kpi-card:hover { transform: translateY(-3px); box-shadow: 0 6px 15px rgba(0, 0, 0, 0.08); }
-    .kpi-title { margin: 0; font-size: 12px; color: #6C757D; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
-    .kpi-value { margin: 5px 0; font-size: 32px; color: #212529; font-weight: 900; }
-    .kpi-subtitle { margin: 0; font-size: 12px; color: #ADB5BD; font-weight: 500; }
-    .bloco-header { color: #2C3E50; font-weight: 800; font-size: 22px; margin-top: 30px; margin-bottom: 10px; border-bottom: 2px solid #E9ECEF; padding-bottom: 5px;}
+    
+    /* Escondendo a marca d'agua do Streamlit para visual mais profissional */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+
+    /* Cards de KPI - Estilo Premium / Neumorphism */
+    .kpi-card {
+        background: #FFFFFF;
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 10px 25px rgba(0, 134, 255, 0.05), 0 4px 10px rgba(0, 0, 0, 0.03);
+        border: 1px solid #EBF1F5;
+        border-top: 4px solid #0086FF; /* Magalu Blue Padrão */
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        margin-bottom: 24px;
+        position: relative;
+        overflow: hidden;
+    }
+    .kpi-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 35px rgba(0, 134, 255, 0.1), 0 5px 15px rgba(0, 0, 0, 0.05);
+    }
+    .kpi-title { 
+        margin: 0; font-size: 13px; color: #64748B; font-weight: 700; 
+        text-transform: uppercase; letter-spacing: 1px; 
+    }
+    .kpi-value { 
+        margin: 8px 0; font-size: 38px; color: #0F172A; 
+        font-weight: 900; letter-spacing: -1px; line-height: 1.1;
+    }
+    .kpi-subtitle { 
+        margin: 0; font-size: 13px; color: #94A3B8; font-weight: 500; 
+    }
+
+    /* Cabeçalhos de Bloco Estilo UI Dashboard Gringo */
+    .bloco-header {
+        color: #0F172A;
+        font-weight: 800;
+        font-size: 24px;
+        margin-top: 40px;
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .bloco-header::before {
+        content: '';
+        display: inline-block;
+        width: 6px;
+        height: 28px;
+        background-color: #0086FF;
+        border-radius: 4px;
+    }
+
+    /* Estilizando as Abas Nativas (Tabs) */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 24px;
+        background-color: transparent;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 54px;
+        white-space: pre-wrap;
+        background-color: transparent;
+        border-radius: 8px 8px 0 0;
+        color: #64748B;
+        font-weight: 600;
+        font-size: 16px;
+        padding: 0 16px;
+    }
+    .stTabs [aria-selected="true"] {
+        color: #0086FF !important;
+        border-bottom-color: #0086FF !important;
+        background-color: #ffffff;
+        box-shadow: 0 -4px 10px rgba(0,0,0,0.02);
+    }
 </style>
 """, unsafe_allow_html=True)
 
 def exibir_kpi(titulo, valor, subtitulo="", cor="#0086FF"):
+    # Aplica a cor dinâmica na borda superior do card
     st.markdown(f"""
-    <div class="kpi-card" style="border-left-color: {cor};">
+    <div class="kpi-card" style="border-top-color: {cor};">
         <p class="kpi-title">{titulo}</p>
         <p class="kpi-value">{valor}</p>
-        <p class="kpi-subtitle">{subtitulo}</p>
+        <p class="kpi-subtitle" style="color: {cor}; opacity: 0.8;">{subtitulo}</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -41,14 +112,10 @@ def exibir_kpi(titulo, valor, subtitulo="", cor="#0086FF"):
 def limpa_numero_br(valor):
     if pd.isna(valor) or str(valor).strip() in ['', 'NAN', 'NULL', 'NONE']: return 0
     v = str(valor).strip()
-    if ',' in v:
-        v = v.replace('.', '').replace(',', '.')
-    else:
-        v = v.replace('.', '')
-    try:
-        return float(v)
-    except:
-        return 0
+    if ',' in v: v = v.replace('.', '').replace(',', '.')
+    else: v = v.replace('.', '')
+    try: return float(v)
+    except: return 0
 
 # --- CONVERSÕES DE TEMPO ---
 def time_to_mins(t_str):
@@ -162,15 +229,14 @@ def carregar_dados_conferencia():
             if 'DURAÇÃO CARGA' in df_hoje.columns: df_hoje['DURAÇÃO CARGA'] = df_hoje['DURAÇÃO CARGA'].astype(str).str.strip()
         else: df_hoje = pd.DataFrame()
 
-        # --- 3. COFRE DE FECHAMENTO ---
+        # --- 3. COFRE DE FECHAMENTO (Agora com vacina) ---
         aba_fechamento = next((aba for aba in todas_abas if "FECHAMENTO" in aba.title.upper()), None)
         if aba_fechamento:
             data_fech = aba_fechamento.get_all_values()
             if len(data_fech) > 1:
                 df_fechamento = pd.DataFrame(data_fech[1:], columns=data_fech[0])
                 df_fechamento.columns = df_fechamento.columns.str.strip().str.upper()
-                
-                # A MÁGICA: Limpando a vírgula do Google Sheets antes de fazer conta!
+                # VACINA DA VÍRGULA NO HISTÓRICO
                 if 'META MINUTOS' in df_fechamento.columns:
                     df_fechamento['META MINUTOS'] = df_fechamento['META MINUTOS'].apply(limpa_numero_br)
                 if 'REALIZADO MINUTOS' in df_fechamento.columns:
@@ -208,10 +274,13 @@ def popup_detalhe_hora(hora, df_base, data_sel):
     st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
 
 # =========================================================================
-# 3. INTERFACE E ABAS
+# 3. INTERFACE E ABAS PRINCIPAIS
 # =========================================================================
 df_armz = carregar_dados_armazenagem()
 df_hist_conf, df_hoje_conf, df_fechamento = carregar_dados_conferencia()
+
+# Estilização do título principal para combinar com as cores
+st.markdown("<h1 style='color: #0F172A;'>Central de Operações Logísticas <span style='color: #0086FF;'>Magalu</span></h1>", unsafe_allow_html=True)
 
 tab1, tab2, tab3 = st.tabs(["📦 Torre de Armazenagem (Doca)", "🔎 Torre de Conferência (Metas)", "🏅 Desempenho da Equipe"])
 
@@ -223,7 +292,7 @@ with tab1:
         df_armz_filtrado = df_armz[df_armz['SITUACAO'].isin(['23', '25'])]
         
         st.sidebar.image("https://magalog.com.br/opengraph-image.jpg?fdd536e7d35ec9da", width=250)
-        st.sidebar.markdown("### 🎛️ Controles da Operação")
+        st.sidebar.markdown("### 🎛️ Painel de Controle")
         
         data_max = df_armz_filtrado['Data_Conf'].dropna().max()
         data_sel = st.sidebar.date_input("🗓️ Data de Análise (Armaz.)", data_max)
@@ -240,15 +309,15 @@ with tab1:
 
         fantasmas = ['', 'NAN', 'NONE', 'NULL']
         conferentes_validos = sorted([c for c in df_base_armz['CONFERENTE'].unique() if pd.notna(c) and c not in fantasmas])
-        conf_sel = st.sidebar.multiselect("📋 Filtrar Conferente:", options=conferentes_validos, default=conferentes_validos)
+        conf_sel = st.sidebar.multiselect("📋 Equipe de Conferência:", options=conferentes_validos, default=conferentes_validos)
         df_base_armz = df_base_armz[df_base_armz['CONFERENTE'].isin(conf_sel)]
 
         operadores_validos = sorted([op for op in df_base_armz['OPERADOR'].unique() if pd.notna(op) and op not in fantasmas])
-        op_sel = st.sidebar.multiselect("👥 Filtrar Operador:", options=operadores_validos, default=operadores_validos)
+        op_sel = st.sidebar.multiselect("👥 Equipe de Armazenagem:", options=operadores_validos, default=operadores_validos)
         
         df_producao_equipe = df_base_armz[(df_base_armz['Data_Armz'] == data_sel) & (df_base_armz['SITUACAO'] == '25') & (df_base_armz['OPERADOR'].isin(op_sel))]
 
-        st.title(f"🚀 Torre de Controle | {data_sel.strftime('%d/%m/%Y')}")
+        st.caption(f"Dados atualizados para: **{data_sel.strftime('%d/%m/%Y')}**")
         
         c1, c2, c3, c4 = st.columns(4)
         qtd_etiquetas_armz = df_producao_equipe['NU_ETIQUETA'].nunique()
@@ -259,13 +328,13 @@ with tab1:
         espera_valida = df_producao_equipe[df_producao_equipe['Tempo_Espera_Minutos'] > 0]['Tempo_Espera_Minutos']
         sla_medio = espera_valida.mean() if not espera_valida.empty else 0
         
-        with c1: exibir_kpi("Armazenados (Sit. 25)", f"{qtd_etiquetas_armz:,.0f}", "Equipe selecionada", "#0086FF")
-        with c2: exibir_kpi("Pendências (Sit. 23)", f"{qtd_pendentes_doca:,.0f}", "Fila total da Doca", "#E74C3C")
-        with c3: exibir_kpi("SLA Médio Doca", mins_to_text(sla_medio), "Tempo em espera", "#F44336" if sla_medio > 120 else "#4CAF50")
-        with c4: exibir_kpi("Operadores Ativos", str(len(op_sel)), "Filtro aplicado", "#FF9800")
+        with c1: exibir_kpi("Armazenados", f"{qtd_etiquetas_armz:,.0f}", "Etiquetas na Situação 25", "#0086FF")
+        with c2: exibir_kpi("Fila da Doca", f"{qtd_pendentes_doca:,.0f}", "Etiquetas Pendentes (Sit. 23)", "#E74C3C")
+        with c3: exibir_kpi("Tempo de Espera", mins_to_text(sla_medio), "SLA Médio", "#F44336" if sla_medio > 120 else "#10B981")
+        with c4: exibir_kpi("Operadores", str(len(op_sel)), "Ativos na Análise", "#F59E0B")
 
         col_tit, col_sel = st.columns([7, 3])
-        with col_tit: st.markdown("<div class='bloco-header'>🌊 Fluxo de Trabalho e Fila</div>", unsafe_allow_html=True)
+        with col_tit: st.markdown("<div class='bloco-header'>Fluxo de Trabalho e Capacidade</div>", unsafe_allow_html=True)
         
         horas_conf = df_base_armz[df_base_armz['Data_Conf'] == data_sel]['Hora_Conf'].dropna().unique()
         horas_armz = df_producao_equipe['Hora_Armz'].dropna().unique()
@@ -273,7 +342,7 @@ with tab1:
         
         with col_sel:
             st.markdown("<br>", unsafe_allow_html=True)
-            hora_manual = st.selectbox("🖱️ Abrir Raio-X da Hora:", ["Selecione..."] + todas_horas)
+            hora_manual = st.selectbox("🖱️ Inspecionar Hora Específica:", ["Selecione..."] + todas_horas)
 
         dados_grafico = []
         for hora in todas_horas:
@@ -295,11 +364,22 @@ with tab1:
 
         if not df_fluxo.empty:
             fig_fluxo = go.Figure()
-            fig_fluxo.add_trace(go.Bar(x=df_fluxo['Hora'], y=df_fluxo['Armazenados'], name='Armazenados', marker_color='#0086FF', text=df_fluxo['Armazenados'], textposition='auto'))
-            fig_fluxo.add_trace(go.Bar(x=df_fluxo['Hora'], y=df_fluxo['Conferidos'], name='Conferidos', marker_color='#9d26ff', text=df_fluxo['Conferidos'], textposition='outside'))
-            fig_fluxo.add_trace(go.Scatter(x=df_fluxo['Hora'], y=df_fluxo['Pendências'], name='Pendências', mode='lines+markers+text', line=dict(color='#E74C3C', width=3), yaxis='y2', text=df_fluxo['Pendências'], textposition='top center'))
+            # Ajuste de Cores do Gráfico para o Tema Novo
+            fig_fluxo.add_trace(go.Bar(x=df_fluxo['Hora'], y=df_fluxo['Armazenados'], name='Armazenados (Produção)', marker_color='#0086FF', text=df_fluxo['Armazenados'], textposition='auto'))
+            fig_fluxo.add_trace(go.Bar(x=df_fluxo['Hora'], y=df_fluxo['Conferidos'], name='Conferidos (Demanda)', marker_color='#94A3B8', text=df_fluxo['Conferidos'], textposition='outside'))
+            fig_fluxo.add_trace(go.Scatter(x=df_fluxo['Hora'], y=df_fluxo['Pendências'], name='Fila Acumulada', mode='lines+markers+text', line=dict(color='#EF4444', width=3), yaxis='y2', text=df_fluxo['Pendências'], textposition='top center'))
             
-            fig_fluxo.update_layout(plot_bgcolor='rgba(0,0,0,0)', barmode='group', legend=dict(orientation="h", y=1.15, x=0.5, xanchor='center'), yaxis2=dict(overlaying='y', side='right', showgrid=False), hovermode="x unified")
+            fig_fluxo.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)', 
+                paper_bgcolor='rgba(0,0,0,0)',
+                font_family="Inter",
+                barmode='group', 
+                legend=dict(orientation="h", y=1.15, x=0.5, xanchor='center'), 
+                yaxis2=dict(overlaying='y', side='right', showgrid=False), 
+                hovermode="x unified",
+                xaxis=dict(showgrid=False),
+                yaxis=dict(gridcolor='#E2E8F0')
+            )
             
             ev = st.plotly_chart(fig_fluxo, use_container_width=True, on_select="rerun")
             if hora_manual != "Selecione...": popup_detalhe_hora(hora_manual, df_base_armz, data_sel)
@@ -312,8 +392,7 @@ with tab1:
 # -------------------------------------------------------------------------
 with tab2:
     if not df_hist_conf.empty and not df_hoje_conf.empty:
-        st.title("🎯 Torre de Conferência e Previsão")
-        st.caption("Cálculo preditivo inteligente: Busca no histórico as cargas com o mesmo perfil.")
+        st.caption("Cálculo preditivo inteligente: O algoritmo localiza cargas irmãs no histórico para gerar a meta mais justa possível.")
         
         taxa_global_cd = df_hist_conf['TMP APC'].sum() / df_hist_conf['PEÇAS'].sum() if df_hist_conf['PEÇAS'].sum() > 0 else 1.0
 
@@ -353,7 +432,7 @@ with tab2:
             status = row['STATUS_FISICO']
             if status == 'OK': return "✅ Finalizado"
             restante = row['META_TEMPO_MIN'] - row['DURAÇÃO_REAL_MIN']
-            if restante < 0: return "⚠️ Já Estourou"
+            if restante < 0: return "⚠️ Estourou"
             return (agora + pd.Timedelta(minutes=restante)).strftime("%H:%M")
             
         def calcular_situacao_meta(row):
@@ -374,12 +453,12 @@ with tab2:
         acertos = df_hoje_conf[df_hoje_conf['SITUAÇÃO META'].isin(['✅ No Prazo', '⏳ No Ritmo', '⏸️ Aguardando Início'])].shape[0]
         perc_acerto = (acertos / cargas_totais) * 100 if cargas_totais > 0 else 0
         
-        with c1: exibir_kpi("Total Agendas", cargas_totais, "Na grade de hoje", "#9B59B6")
-        with c2: exibir_kpi("Cargas Finalizadas", cargas_ok, "Status 'OK'", "#0086FF")
-        with c3: exibir_kpi("Fila Física", cargas_fila, "Doca ou P-Externo", "#FF9800")
-        with c4: exibir_kpi("Saúde das Metas", f"{perc_acerto:.1f}%", "Aderência ao tempo", "#4CAF50" if perc_acerto > 80 else "#F44336")
+        with c1: exibir_kpi("Agendas do Dia", cargas_totais, "Na grade", "#8B5CF6")
+        with c2: exibir_kpi("Finalizadas", cargas_ok, "Cargas Entregues", "#0086FF")
+        with c3: exibir_kpi("Fila Física", cargas_fila, "Doca ou Pátio Externo", "#F59E0B")
+        with c4: exibir_kpi("Saúde das Metas", f"{perc_acerto:.1f}%", "Aderência", "#10B981" if perc_acerto > 80 else "#EF4444")
         
-        st.markdown("<div class='bloco-header'>📊 Despacho de Cargas e Previsão de Fim</div>", unsafe_allow_html=True)
+        st.markdown("<div class='bloco-header'>Despacho de Cargas e Previsão Algorítmica</div>", unsafe_allow_html=True)
         
         df_tabela = df_hoje_conf[['AGENDA', 'CONFERENTE', 'CATEGORIA', 'STATUS_FISICO', 'PEÇAS', 'SKU', 'META_TEMPO_MIN', 'DURAÇÃO_REAL_MIN', 'PREVISÃO FIM', 'SITUAÇÃO META']].copy()
         df_tabela['META (Tempo)'] = df_tabela['META_TEMPO_MIN'].apply(mins_to_text)
@@ -389,15 +468,16 @@ with tab2:
         df_tabela = df_tabela[['AGENDA', 'CONFERENTE', 'CATEGORIA', 'STATUS_FISICO', 'PEÇAS', 'SKU', 'META (Tempo)', 'GASTO (Tempo)', 'PREVISÃO FIM', 'SITUAÇÃO META']]
         
         def cor_status(val):
-            if '✅' in str(val): return 'color: #155724; background-color: #d4edda; font-weight: bold;'
-            if '🔴' in str(val) or '⚠️' in str(val): return 'color: #721c24; background-color: #f8d7da; font-weight: bold;'
-            if '⏳' in str(val): return 'color: #856404; background-color: #fff3cd; font-weight: bold;'
+            if '✅' in str(val): return 'color: #065F46; background-color: #D1FAE5; font-weight: 600; border-radius: 4px;'
+            if '🔴' in str(val) or '⚠️' in str(val): return 'color: #991B1B; background-color: #FEE2E2; font-weight: 600; border-radius: 4px;'
+            if '⏳' in str(val): return 'color: #92400E; background-color: #FEF3C7; font-weight: 600; border-radius: 4px;'
             return ''
 
         st.dataframe(df_tabela.style.applymap(cor_status, subset=['SITUAÇÃO META', 'PREVISÃO FIM']), use_container_width=True, hide_index=True)
 
-        st.markdown("---")
-        st.markdown("### 🤖 Piloto Automático de Fechamento")
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        st.markdown("<div style='background-color: #FFFFFF; padding: 20px; border-radius: 12px; border-left: 4px solid #10B981; box-shadow: 0 4px 6px rgba(0,0,0,0.02);'>", unsafe_allow_html=True)
+        st.markdown("### 🤖 Automação de Fechamento")
         
         hora_atual = agora.strftime("%H:%M")
         data_hoje_str = agora.strftime('%d/%m/%Y')
@@ -407,10 +487,10 @@ with tab2:
             ja_salvou_hoje = True
             
         if ja_salvou_hoje:
-            st.success(f"✅ O fechamento de hoje ({data_hoje_str}) já foi gravado no cofre automaticamente!")
+            st.success(f"✅ Fechamento de {data_hoje_str} gravado com sucesso no cofre.")
         else:
             if hora_atual >= "17:20":
-                st.info(f"🕒 Passou das 17:20! O Robô está iniciando a gravação do turno...")
+                st.info(f"🕒 Horário atingido. Gravando turno...")
                 df_para_salvar = df_hoje_conf[(df_hoje_conf['STATUS_FISICO'] == 'OK') & (df_hoje_conf['DURAÇÃO_REAL_MIN'] > 0)].copy()
                 
                 if not df_para_salvar.empty:
@@ -420,18 +500,16 @@ with tab2:
                         'META MINUTOS': df_para_salvar['META_TEMPO_MIN'].round(2), 'REALIZADO MINUTOS': df_para_salvar['DURAÇÃO_REAL_MIN'].round(2),
                         'RESULTADO': df_para_salvar['SITUAÇÃO META'].apply(lambda x: 'NO PRAZO' if '✅' in x else 'ATRASADO')
                     })
-                    with st.spinner("Gravando no Cofre de Dados..."):
+                    with st.spinner("Gravando Banco de Dados..."):
                         sucesso = salvar_historico_fechamento(df_export)
                         if sucesso:
-                            st.success(f"🎉 Robô salvou {len(df_export)} cargas no histórico com sucesso!")
                             st.cache_data.clear()
                             st.rerun()
                 else:
-                    st.warning("Deu a hora do fechamento, mas não havia nenhuma carga com status 'OK' e tempo registrado.")
+                    st.warning("O turno virou, mas nenhuma agenda foi finalizada para arquivamento.")
             else:
-                st.info(f"⏳ O robô está aguardando dar **17:20** para salvar os resultados. (Hora atual: {hora_atual})")
-                
-                if st.button("⚠️ Forçar Gravação Agora", type="secondary"):
+                st.info(f"⏳ O sistema aguarda às **17:20** para o fechamento diário. (Hora local: {hora_atual})")
+                if st.button("Forçar Fechamento Manual", type="secondary"):
                     df_para_salvar = df_hoje_conf[(df_hoje_conf['STATUS_FISICO'] == 'OK') & (df_hoje_conf['DURAÇÃO_REAL_MIN'] > 0)].copy()
                     if not df_para_salvar.empty:
                         df_export = pd.DataFrame({
@@ -445,30 +523,27 @@ with tab2:
                             st.cache_data.clear()
                             st.rerun()
                     else:
-                        st.warning("Nenhuma carga finalizada para salvar.")
+                        st.warning("Nenhum dado finalizado disponível.")
+        st.markdown("</div>", unsafe_allow_html=True)
     else:
-        st.warning("⚠️ Planilhas de Conferência não encontradas ou vazias.")
+        st.warning("⚠️ Planilhas de Conferência desconectadas.")
 
 # -------------------------------------------------------------------------
-# ABA 3: RANKING DE CONFERENTES (HISTÓRICO BLINDADO MATEMATICAMENTE)
+# ABA 3: RANKING DE CONFERENTES (HISTÓRICO BLINDADO)
 # -------------------------------------------------------------------------
 with tab3:
-    st.title("🏅 Desempenho Histórico: Equipe de Conferência")
+    st.caption("Acompanhamento histórico de performance, velocidade e aderência às metas da equipe.")
     
     if not df_fechamento.empty:
         datas_disponiveis = df_fechamento['DATA'].unique()
-        data_hist_sel = st.multiselect("Filtrar por Data do Histórico:", options=datas_disponiveis, default=datas_disponiveis)
+        data_hist_sel = st.multiselect("Filtrar Período:", options=datas_disponiveis, default=datas_disponiveis)
         
         df_f = df_fechamento[df_fechamento['DATA'].isin(data_hist_sel)].copy()
         
         if not df_f.empty:
-            # 1. Calcula a diferença de tempo exatamente pelo número salvo
             df_f['Desvio (Minutos)'] = df_f['REALIZADO MINUTOS'] - df_f['META MINUTOS']
-            
-            # 2. Ignora o texto gravado e RECALCULA o resultado baseado puramente na matemática!
             df_f['STATUS_REAL'] = df_f['Desvio (Minutos)'].apply(lambda x: 'ATRASADO' if x > 0 else 'NO PRAZO')
             
-            # 3. Agrupa os dados
             ranking = df_f.groupby('CONFERENTE').agg(
                 Cargas_Feitas=('AGENDA', 'count'),
                 Atrasos=('STATUS_REAL', lambda x: (x == 'ATRASADO').sum()),
@@ -476,35 +551,33 @@ with tab3:
                 Tempo_Medio_Desvio=('Desvio (Minutos)', 'mean')
             ).reset_index()
             
-            # 4. Calcula o % de Acerto
             ranking['% de Acerto'] = (ranking['No_Prazo'] / ranking['Cargas_Feitas']) * 100
             ranking = ranking.sort_values('% de Acerto', ascending=False)
             
             col1, col2 = st.columns(2)
             
             with col1:
-                st.markdown("#### 🏆 Top Conferentes (% de Metas Batidas)")
+                st.markdown("<div class='bloco-header'>Top Performers (Aderência)</div>", unsafe_allow_html=True)
                 fig_bar = px.bar(ranking, x='CONFERENTE', y='% de Acerto', text_auto='.1f', 
-                                 color='% de Acerto', color_continuous_scale='Greens',
+                                 color='% de Acerto', color_continuous_scale='Blues',
                                  labels={'% de Acerto': 'Taxa de Acerto (%)'})
-                fig_bar.update_layout(yaxis=dict(range=[0, 100]), coloraxis_showscale=False)
+                fig_bar.update_layout(yaxis=dict(range=[0, 100]), coloraxis_showscale=False, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
             with col2:
-                st.markdown("#### ⏳ Balanço de Tempo (Gargalo vs Agilidade)")
-                st.caption("Barras vermelhas indicam tempo médio estourado. Verdes indicam agilidade (tempo salvo).")
+                st.markdown("<div class='bloco-header'>Balanço de Tempo (Gargalo vs Ganho)</div>", unsafe_allow_html=True)
                 
                 ranking_desvio = ranking.sort_values('Tempo_Medio_Desvio', ascending=False)
-                cores = ['#F44336' if val > 0 else '#4CAF50' for val in ranking_desvio['Tempo_Medio_Desvio']]
+                cores = ['#EF4444' if val > 0 else '#10B981' for val in ranking_desvio['Tempo_Medio_Desvio']]
                 
                 fig_desv = go.Figure(go.Bar(
                     x=ranking_desvio['CONFERENTE'], y=ranking_desvio['Tempo_Medio_Desvio'], 
                     marker_color=cores, text=ranking_desvio['Tempo_Medio_Desvio'].round(1), textposition='auto'
                 ))
-                fig_desv.update_layout(yaxis_title="Minutos (Média de Desvio)")
+                fig_desv.update_layout(yaxis_title="Minutos (Média de Desvio)", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
                 st.plotly_chart(fig_desv, use_container_width=True)
                 
-            st.markdown("#### 📋 Detalhamento da Equipe")
+            st.markdown("<div class='bloco-header'>Detalhamento Analítico</div>", unsafe_allow_html=True)
             st.dataframe(ranking[['CONFERENTE', 'Cargas_Feitas', 'No_Prazo', 'Atrasos', '% de Acerto', 'Tempo_Medio_Desvio']].style.format({
                 '% de Acerto': '{:.1f}%',
                 'Tempo_Medio_Desvio': '{:.1f} min'
@@ -513,4 +586,4 @@ with tab3:
         else:
             st.info("Nenhuma data selecionada.")
     else:
-        st.info("📭 Nenhum dado de fechamento encontrado. Lembre-se de criar a aba 'FECHAMENTO' na planilha do Google Sheets.")
+        st.info("📭 Banco de Fechamento Vazio. Os resultados aparecerão após a primeira gravação diária.")
