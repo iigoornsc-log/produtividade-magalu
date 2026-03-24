@@ -479,19 +479,25 @@ with tab2:
         st.markdown("<div style='background-color: #FFFFFF; padding: 20px; border-radius: 12px; border-left: 4px solid #10B981; box-shadow: 0 4px 6px rgba(0,0,0,0.02);'>", unsafe_allow_html=True)
         st.markdown("### 🤖 Automação de Fechamento")
         
+        # --- O DISJUNTOR DE SEGURANÇA (Evita Loop Infinito) ---
+        if 'trava_salvamento' not in st.session_state:
+            st.session_state.trava_salvamento = False
+        
         hora_atual = agora.strftime("%H:%M")
         data_hoje_str = agora.strftime('%d/%m/%Y')
         
+        # Verifica se já existe na planilha
         ja_salvou_hoje = False
-        if not df_fechamento.empty and data_hoje_str in df_fechamento['DATA'].values:
-            ja_salvou_hoje = True
+        if not df_fechamento.empty and 'DATA' in df_fechamento.columns:
+            if data_hoje_str in df_fechamento['DATA'].values:
+                ja_salvou_hoje = True
+                st.session_state.trava_salvamento = True # Trava ativada pelo histórico
             
-        if ja_salvou_hoje:
-            st.success(f"✅ Fechamento de {data_hoje_str} já foi gravado com sucesso no cofre hoje!")
+        if ja_salvou_hoje or st.session_state.trava_salvamento:
+            st.success(f"✅ Fechamento de {data_hoje_str} já está garantido no cofre (ou foi travado por segurança na sessão atual).")
             
-            # MODO OVERRIDE (Forçar gravação de novo)
             with st.expander("⚙️ Precisa atualizar o fechamento de hoje?"):
-                st.warning("⚠️ **Atenção:** Se você gravar de novo, o sistema vai adicionar as cargas novamente. Se for fazer isso, vá no Google Sheets, apague as linhas de hoje na aba FECHAMENTO e depois clique abaixo.")
+                st.warning("⚠️ **Atenção:** Vá no Google Sheets, EXCLUA AS LINHAS (botão direito > excluir linha) que estão erradas antes de forçar a gravação, para não duplicar dados.")
                 if st.button("🔄 Forçar Gravação Novamente", type="primary"):
                     df_para_salvar = df_hoje_conf[(df_hoje_conf['STATUS_FISICO'] == 'OK') & (df_hoje_conf['DURAÇÃO_REAL_MIN'] > 0)].copy()
                     if not df_para_salvar.empty:
@@ -501,16 +507,17 @@ with tab2:
                             'META MINUTOS': df_para_salvar['META_TEMPO_MIN'].round(2), 'REALIZADO MINUTOS': df_para_salvar['DURAÇÃO_REAL_MIN'].round(2),
                             'RESULTADO': df_para_salvar['SITUAÇÃO META'].apply(lambda x: 'NO PRAZO' if '✅' in x else 'ATRASADO')
                         })
-                        with st.spinner("Forçando gravação no Banco de Dados..."):
+                        with st.spinner("Forçando gravação..."):
                             sucesso = salvar_historico_fechamento(df_export)
                             if sucesso:
+                                st.session_state.trava_salvamento = True
                                 st.cache_data.clear()
                                 st.rerun()
                     else:
-                        st.warning("Nenhuma carga finalizada disponível para salvar.")
+                        st.warning("Nenhuma carga finalizada para salvar.")
         else:
             if hora_atual >= "17:20":
-                st.info(f"🕒 Horário atingido. Gravando turno...")
+                st.info(f"🕒 Horário atingido. Gravando turno e ativando trava de segurança...")
                 df_para_salvar = df_hoje_conf[(df_hoje_conf['STATUS_FISICO'] == 'OK') & (df_hoje_conf['DURAÇÃO_REAL_MIN'] > 0)].copy()
                 
                 if not df_para_salvar.empty:
@@ -523,12 +530,13 @@ with tab2:
                     with st.spinner("Gravando Banco de Dados..."):
                         sucesso = salvar_historico_fechamento(df_export)
                         if sucesso:
+                            st.session_state.trava_salvamento = True # BATE O DISJUNTOR PRA NÃO REPETIR
                             st.cache_data.clear()
                             st.rerun()
                 else:
                     st.warning("O turno virou, mas nenhuma agenda foi finalizada para arquivamento.")
             else:
-                st.info(f"⏳ O sistema aguarda às **17:20** para o fechamento diário automático. (Hora local: {hora_atual})")
+                st.info(f"⏳ O sistema aguarda às **17:20** para o fechamento diário. (Hora local: {hora_atual})")
                 if st.button("Forçar Fechamento Manual", type="secondary"):
                     df_para_salvar = df_hoje_conf[(df_hoje_conf['STATUS_FISICO'] == 'OK') & (df_hoje_conf['DURAÇÃO_REAL_MIN'] > 0)].copy()
                     if not df_para_salvar.empty:
@@ -541,6 +549,7 @@ with tab2:
                         with st.spinner("Gravando Banco de Dados..."):
                             sucesso = salvar_historico_fechamento(df_export)
                             if sucesso:
+                                st.session_state.trava_salvamento = True # BATE O DISJUNTOR AQUI TAMBÉM
                                 st.cache_data.clear()
                                 st.rerun()
                     else:
