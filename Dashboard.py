@@ -446,7 +446,7 @@ with tab2:
         st.warning("⚠️ Planilhas de Conferência não encontradas ou vazias.")
 
 # -------------------------------------------------------------------------
-# ABA 3: RANKING DE CONFERENTES (HISTÓRICO CORRIGIDO)
+# ABA 3: RANKING DE CONFERENTES (HISTÓRICO BLINDADO MATEMATICAMENTE)
 # -------------------------------------------------------------------------
 with tab3:
     st.title("🏅 Desempenho Histórico: Equipe de Conferência")
@@ -458,19 +458,21 @@ with tab3:
         df_f = df_fechamento[df_fechamento['DATA'].isin(data_hist_sel)].copy()
         
         if not df_f.empty:
+            # 1. Calcula a diferença de tempo exatamente pelo número salvo
             df_f['Desvio (Minutos)'] = df_f['REALIZADO MINUTOS'] - df_f['META MINUTOS']
             
-            # --- CORREÇÃO DO CÁLCULO DE RESULTADO ---
-            # Força a coluna a ficar sem espaços em branco e tudo maiúsculo antes de contar
-            df_f['RESULTADO_LIMPO'] = df_f['RESULTADO'].astype(str).str.strip().str.upper()
+            # 2. Ignora o texto gravado e RECALCULA o resultado baseado puramente na matemática!
+            df_f['STATUS_REAL'] = df_f['Desvio (Minutos)'].apply(lambda x: 'ATRASADO' if x > 0 else 'NO PRAZO')
             
+            # 3. Agrupa os dados
             ranking = df_f.groupby('CONFERENTE').agg(
                 Cargas_Feitas=('AGENDA', 'count'),
-                Atrasos=('RESULTADO_LIMPO', lambda x: (x == 'ATRASADO').sum()),
-                No_Prazo=('RESULTADO_LIMPO', lambda x: (x == 'NO PRAZO').sum()),
+                Atrasos=('STATUS_REAL', lambda x: (x == 'ATRASADO').sum()),
+                No_Prazo=('STATUS_REAL', lambda x: (x == 'NO PRAZO').sum()),
                 Tempo_Medio_Desvio=('Desvio (Minutos)', 'mean')
             ).reset_index()
             
+            # 4. Calcula o % de Acerto
             ranking['% de Acerto'] = (ranking['No_Prazo'] / ranking['Cargas_Feitas']) * 100
             ranking = ranking.sort_values('% de Acerto', ascending=False)
             
@@ -486,7 +488,7 @@ with tab3:
                 
             with col2:
                 st.markdown("#### ⏳ Balanço de Tempo (Gargalo vs Agilidade)")
-                st.caption("Barras vermelhas indicam tempo estourado médio. Verdes indicam agilidade (tempo salvo).")
+                st.caption("Barras vermelhas indicam tempo médio estourado. Verdes indicam agilidade (tempo salvo).")
                 
                 ranking_desvio = ranking.sort_values('Tempo_Medio_Desvio', ascending=False)
                 cores = ['#F44336' if val > 0 else '#4CAF50' for val in ranking_desvio['Tempo_Medio_Desvio']]
