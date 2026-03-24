@@ -297,46 +297,80 @@ with tab1:
 with tab2:
     if not df_hist_conf.empty and not df_hoje_conf.empty:
         st.title("🎯 Torre de Conferência e Previsão")
-        st.caption("Cálculo preditivo inteligente: Busca no histórico as cargas com o mesmo perfil (Peças e SKUs).")
+        st.caption("Cálculo preditivo inteligente: Busca no histórico as cargas com o mesmo perfil (Fornecedor, Categoria, Peças e SKUs).")
         
+        # Taxa global do CD (Plano de emergência máximo)
         taxa_global_cd = df_hist_conf['TMP APC'].sum() / df_hist_conf['PEÇAS'].sum() if df_hist_conf['PEÇAS'].sum() > 0 else 1.0
 
-        # O Algoritmo de Cargas Gêmeas
+        # O Algoritmo de Cargas Gêmeas (Turbinado com Categoria)
         def calcular_meta_inteligente(row, df_historico):
             forn = str(row.get('ORIGEM', '')).strip().upper()
             linha = str(row.get('CATEGORIA', '')).strip().upper()
             pecas = row.get('PEÇAS', 0)
             sku = row.get('SKU', 0)
             
-            df_base = df_historico[(df_historico['FORNECEDOR'].str.upper() == forn) & 
-                                   (df_historico['LINHA'].str.upper() == linha)]
-            
-            if df_base.empty:
-                return pecas * taxa_global_cd 
-                
+            # Margens de "O que é parecido?"
             min_pecas, max_pecas = pecas * 0.7, pecas * 1.3
             min_sku, max_sku = min(sku * 0.7, sku - 2), max(sku * 1.3, sku + 2)
-            
-            df_gemeas = df_base[(df_base['PEÇAS'] >= min_pecas) & (df_base['PEÇAS'] <= max_pecas) & 
-                                (df_base['SKU'] >= min_sku) & (df_base['SKU'] <= max_sku)]
-            
-            if not df_gemeas.empty:
-                return df_gemeas['TMP APC'].mean()
-                
-            df_primas = df_base[(df_base['PEÇAS'] >= min_pecas) & (df_base['PEÇAS'] <= max_pecas)]
-            if not df_primas.empty:
-                return df_primas['TMP APC'].mean()
-                
-            velocidade_fornecedor = df_base['TMP APC'].sum() / df_base['PEÇAS'].sum() if df_base['PEÇAS'].sum() > 0 else taxa_global_cd
-            return pecas * velocidade_fornecedor
 
+            # -----------------------------------------------------------------
+            # PLANO A: Gêmea Perfeita (Mesmo Fornecedor + Mesma Categoria)
+            # -----------------------------------------------------------------
+            df_base_exata = df_historico[(df_historico['FORNECEDOR'].str.upper() == forn) & 
+                                         (df_historico['LINHA'].str.upper() == linha)]
+            
+            if not df_base_exata.empty:
+                # Tenta Peça e SKU parecidos
+                df_gemeas = df_base_exata[(df_base_exata['PEÇAS'] >= min_pecas) & (df_base_exata['PEÇAS'] <= max_pecas) & 
+                                          (df_base_exata['SKU'] >= min_sku) & (df_base_exata['SKU'] <= max_sku)]
+                if not df_gemeas.empty:
+                    return df_gemeas['TMP APC'].mean()
+                
+                # Tenta só Peça parecida
+                df_primas = df_base_exata[(df_base_exata['PEÇAS'] >= min_pecas) & (df_base_exata['PEÇAS'] <= max_pecas)]
+                if not df_primas.empty:
+                    return df_primas['TMP APC'].mean()
+                
+                # Usa a média do Fornecedor + Categoria
+                if df_base_exata['PEÇAS'].sum() > 0:
+                    velocidade = df_base_exata['TMP APC'].sum() / df_base_exata['PEÇAS'].sum()
+                    return pecas * velocidade
+
+            # -----------------------------------------------------------------
+            # PLANO B: Irmã de Categoria (Fornecedor Novo, mas Categoria Conhecida)
+            # -----------------------------------------------------------------
+            df_base_categoria = df_historico[df_historico['LINHA'].str.upper() == linha]
+            
+            if not df_base_categoria.empty:
+                # Tenta achar outra carga da mesma categoria com tamanho/SKU parecido (Ex: Outra Madeira)
+                df_gemeas_cat = df_base_categoria[(df_base_categoria['PEÇAS'] >= min_pecas) & (df_base_categoria['PEÇAS'] <= max_pecas) & 
+                                                  (df_base_categoria['SKU'] >= min_sku) & (df_base_categoria['SKU'] <= max_sku)]
+                if not df_gemeas_cat.empty:
+                    return df_gemeas_cat['TMP APC'].mean()
+                
+                # Tenta só peças parecidas na mesma categoria
+                df_primas_cat = df_base_categoria[(df_base_categoria['PEÇAS'] >= min_pecas) & (df_base_categoria['PEÇAS'] <= max_pecas)]
+                if not df_primas_cat.empty:
+                    return df_primas_cat['TMP APC'].mean()
+                
+                # Usa a média geral da CATEGORIA (Ex: Velocidade média de toda a Madeira do CD)
+                if df_base_categoria['PEÇAS'].sum() > 0:
+                    velocidade_cat = df_base_categoria['TMP APC'].sum() / df_base_categoria['PEÇAS'].sum()
+                    return pecas * velocidade_cat
+
+            # -----------------------------------------------------------------
+            # PLANO C: Global (Desespero - Fornecedor e Categoria desconhecidos)
+            # -----------------------------------------------------------------
+            return pecas * taxa_global_cd
+
+        # Prepara a base de hoje
         df_hoje_conf['DURAÇÃO_REAL_MIN'] = df_hoje_conf['DURAÇÃO CARGA'].apply(time_to_mins)
         df_hoje_conf['STATUS_FISICO'] = df_hoje_conf['STATUS_FISICO'].str.strip().str.upper()
         
-        # O Motor entra em Ação aqui
+        # O Motor entra em Ação aqui: Aplica a IA em todas as cargas
         df_hoje_conf['META_TEMPO_MIN'] = df_hoje_conf.apply(lambda row: calcular_meta_inteligente(row, df_hist_conf), axis=1)
         
-        # Cálculos de Previsão
+        # Cálculos de Previsão de Fim
         agora = pd.Timestamp.now(tz='America/Sao_Paulo')
         
         def calcular_previsao(row):
@@ -361,7 +395,7 @@ with tab2:
         df_hoje_conf['PREVISÃO FIM'] = df_hoje_conf.apply(calcular_previsao, axis=1)
         df_hoje_conf['SITUAÇÃO META'] = df_hoje_conf.apply(calcular_situacao_meta, axis=1)
         
-        # KPIs
+        # KPIs da Aba
         c1, c2, c3, c4 = st.columns(4)
         cargas_totais = len(df_hoje_conf)
         cargas_ok = df_hoje_conf[df_hoje_conf['STATUS_FISICO'] == 'OK'].shape[0]
@@ -377,6 +411,7 @@ with tab2:
         
         st.markdown("<div class='bloco-header'>📊 Despacho de Cargas e Previsão de Fim</div>", unsafe_allow_html=True)
         
+        # Organizando a Tabela Final
         df_tabela = df_hoje_conf[['AGENDA', 'CONFERENTE', 'CATEGORIA', 'STATUS_FISICO', 'PEÇAS', 'SKU', 'META_TEMPO_MIN', 'DURAÇÃO_REAL_MIN', 'PREVISÃO FIM', 'SITUAÇÃO META']].copy()
         df_tabela['META (Tempo)'] = df_tabela['META_TEMPO_MIN'].apply(mins_to_text)
         df_tabela['GASTO (Tempo)'] = df_tabela['DURAÇÃO_REAL_MIN'].apply(mins_to_text)
