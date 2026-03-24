@@ -277,24 +277,54 @@ with tab1:
 with tab2:
     if not df_hist_conf.empty and not df_hoje_conf.empty:
         st.title("🎯 Torre de Conferência e Previsão")
-        st.caption("Cálculo preditivo baseado no histórico. Monitoramento do Pátio e Docas em tempo real.")
+        st.caption("Cálculo preditivo inteligente: Busca no histórico as cargas com o mesmo perfil (Peças e SKUs).")
         
-        # 1. Aprender com o Histórico
-        taxas_hist = df_hist_conf.groupby(['FORNECEDOR', 'LINHA']).agg({'TMP APC':'sum', 'PEÇAS':'sum'}).reset_index()
-        taxas_hist = taxas_hist[taxas_hist['PEÇAS'] > 0]
-        taxas_hist['VELOCIDADE_MIN_PECA'] = taxas_hist['TMP APC'] / taxas_hist['PEÇAS']
-        
+        # Taxa global de segurança caso chegue um fornecedor totalmente novo
         taxa_global_cd = df_hist_conf['TMP APC'].sum() / df_hist_conf['PEÇAS'].sum() if df_hist_conf['PEÇAS'].sum() > 0 else 1.0
 
-        # 2. Aplicar Metas no Dia Atual
+        # O Algoritmo de "Cargas Parecidas"
+        def calcular_meta_inteligente(row, df_historico):
+            forn = str(row.get('ORIGEM', '')).strip().upper()
+            linha = str(row.get('CATEGORIA', '')).strip().upper()
+            pecas = row.get('PEÇAS', 0)
+            sku = row.get('SKU', 0)
+            
+            # Filtra o mesmo perfil de carga
+            df_base = df_historico[(df_historico['FORNECEDOR'].str.upper() == forn) & 
+                                   (df_historico['LINHA'].str.upper() == linha)]
+            
+            if df_base.empty:
+                return pecas * taxa_global_cd # Se nunca recebeu na vida, usa a média do CD
+                
+            # Define as margens de "O que é parecido?" (± 30% de folga)
+            min_pecas, max_pecas = pecas * 0.7, pecas * 1.3
+            
+            # Para SKU, ± 30% pode ser muito restrito se for 1 SKU. Então damos uma margem de ± 2 SKUs no mínimo.
+            min_sku = min(sku * 0.7, sku - 2)
+            max_sku = max(sku * 1.3, sku + 2)
+            
+            # Tenta achar cargas gêmeas (Peça E Sku parecidos)
+            df_gemeas = df_base[(df_base['PEÇAS'] >= min_pecas) & (df_base['PEÇAS'] <= max_pecas) & 
+                                (df_base['SKU'] >= min_sku) & (df_base['SKU'] <= max_sku)]
+            
+            if not df_gemeas.empty:
+                return df_gemeas['TMP APC'].mean() # Retorna a média de tempo bruta dessas cargas
+                
+            # Se não achar igual em Peça e SKU, tenta achar parecido SÓ pelas Peças
+            df_primas = df_base[(df_base['PEÇAS'] >= min_pecas) & (df_base['PEÇAS'] <= max_pecas)]
+            if not df_primas.empty:
+                return df_primas['TMP APC'].mean()
+                
+            # Se a carga for um monstro (ou minúscula) sem histórico parecido, calcula a velocidade média desse fornecedor
+            velocidade_fornecedor = df_base['TMP APC'].sum() / df_base['PEÇAS'].sum() if df_base['PEÇAS'].sum() > 0 else taxa_global_cd
+            return pecas * velocidade_fornecedor
+
+        # Aplicações na Tabela do Dia
         df_hoje_conf['DURAÇÃO_REAL_MIN'] = df_hoje_conf['DURAÇÃO CARGA'].apply(time_to_mins)
         df_hoje_conf['STATUS_FISICO'] = df_hoje_conf['STATUS_FISICO'].str.strip().str.upper()
         
-        df_analise = pd.merge(df_hoje_conf, taxas_hist[['FORNECEDOR', 'LINHA', 'VELOCIDADE_MIN_PECA']], 
-                              left_on=['ORIGEM', 'CATEGORIA'], right_on=['FORNECEDOR', 'LINHA'], how='left')
-        
-        df_analise['VELOCIDADE_MIN_PECA'] = df_analise['VELOCIDADE_MIN_PECA'].fillna(taxa_global_cd)
-        df_analise['META_TEMPO_MIN'] = df_analise['PEÇAS'] * df_analise['VELOCIDADE_MIN_PECA']
+        # Executa a Inteligência Artificial Caseira linha a linha
+        df_hoje_conf['META_TEMPO_MIN'] = df_hoje_conf.apply(lambda row: calcular_meta_inteligente(row, df_hist_conf), axis=1)
         
         # --- A MÁGICA DO TEMPO PREDITIVO ---
         agora = pd.Timestamp.now(tz='America/Sao_Paulo')
@@ -306,7 +336,6 @@ with tab2:
             restante = row['META_TEMPO_MIN'] - row['DURAÇÃO_REAL_MIN']
             if restante < 0: return "⚠️ Já Estourou"
             
-            # Hora atual + Tempo restante para bater a meta
             hora_fim = agora + pd.Timedelta(minutes=restante)
             return hora_fim.strftime("%H:%M")
             
@@ -319,17 +348,16 @@ with tab2:
                 elif status == 'EM PROCESSO': return "⏳ No Ritmo"
                 else: return "⏸️ Aguardando Início"
             
-        df_analise['PREVISÃO FIM'] = df_analise.apply(calcular_previsao, axis=1)
-        df_analise['SITUAÇÃO META'] = df_analise.apply(calcular_situacao_meta, axis=1)
+        df_hoje_conf['PREVISÃO FIM'] = df_hoje_conf.apply(calcular_previsao, axis=1)
+        df_hoje_conf['SITUAÇÃO META'] = df_hoje_conf.apply(calcular_situacao_meta, axis=1)
         
         # KPIs de Conferência
         c1, c2, c3, c4 = st.columns(4)
-        cargas_totais = len(df_analise)
-        cargas_ok = df_analise[df_analise['STATUS_FISICO'] == 'OK'].shape[0]
-        cargas_fila = df_analise[df_analise['STATUS_FISICO'].isin(['EM DOCA', 'P-EXTERNO'])].shape[0]
+        cargas_totais = len(df_hoje_conf)
+        cargas_ok = df_hoje_conf[df_hoje_conf['STATUS_FISICO'] == 'OK'].shape[0]
+        cargas_fila = df_hoje_conf[df_hoje_conf['STATUS_FISICO'].isin(['EM DOCA', 'P-EXTERNO'])].shape[0]
         
-        # % de cargas que fecharam sem estourar o tempo
-        acertos = df_analise[df_analise['SITUAÇÃO META'].isin(['✅ No Prazo', '⏳ No Ritmo', '⏸️ Aguardando Início'])].shape[0]
+        acertos = df_hoje_conf[df_hoje_conf['SITUAÇÃO META'].isin(['✅ No Prazo', '⏳ No Ritmo', '⏸️ Aguardando Início'])].shape[0]
         perc_acerto = (acertos / cargas_totais) * 100 if cargas_totais > 0 else 0
         
         with c1: exibir_kpi("Total Agendas", cargas_totais, "Na grade de hoje", "#9B59B6")
@@ -339,15 +367,12 @@ with tab2:
         
         st.markdown("<div class='bloco-header'>📊 Despacho de Cargas e Previsão de Fim</div>", unsafe_allow_html=True)
         
-        # Preparar tabela matadora
-        df_tabela = df_analise[['AGENDA', 'CONFERENTE', 'CATEGORIA', 'STATUS_FISICO', 'PEÇAS', 'META_TEMPO_MIN', 'DURAÇÃO_REAL_MIN', 'PREVISÃO FIM', 'SITUAÇÃO META']].copy()
+        df_tabela = df_hoje_conf[['AGENDA', 'CONFERENTE', 'CATEGORIA', 'STATUS_FISICO', 'PEÇAS', 'SKU', 'META_TEMPO_MIN', 'DURAÇÃO_REAL_MIN', 'PREVISÃO FIM', 'SITUAÇÃO META']].copy()
         df_tabela['META (Tempo)'] = df_tabela['META_TEMPO_MIN'].apply(mins_to_text)
         df_tabela['GASTO (Tempo)'] = df_tabela['DURAÇÃO_REAL_MIN'].apply(mins_to_text)
         
-        # Reordenar para esconder os minutos brutos da visão e focar no relógio
-        df_tabela = df_tabela[['AGENDA', 'CONFERENTE', 'CATEGORIA', 'STATUS_FISICO', 'PEÇAS', 'META (Tempo)', 'GASTO (Tempo)', 'PREVISÃO FIM', 'SITUAÇÃO META']]
+        df_tabela = df_tabela[['AGENDA', 'CONFERENTE', 'CATEGORIA', 'STATUS_FISICO', 'PEÇAS', 'SKU', 'META (Tempo)', 'GASTO (Tempo)', 'PREVISÃO FIM', 'SITUAÇÃO META']]
         
-        # Mapeamento de cor da tabela para ficar visual
         def cor_status(val):
             if '✅' in str(val): return 'color: #155724; background-color: #d4edda; font-weight: bold;'
             if '🔴' in str(val) or '⚠️' in str(val): return 'color: #721c24; background-color: #f8d7da; font-weight: bold;'
