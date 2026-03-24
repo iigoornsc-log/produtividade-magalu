@@ -446,7 +446,7 @@ with tab2:
         st.warning("⚠️ Planilhas de Conferência não encontradas ou vazias.")
 
 # -------------------------------------------------------------------------
-# ABA 3: RANKING DE CONFERENTES (HISTÓRICO)
+# ABA 3: RANKING DE CONFERENTES (HISTÓRICO CORRIGIDO)
 # -------------------------------------------------------------------------
 with tab3:
     st.title("🏅 Desempenho Histórico: Equipe de Conferência")
@@ -460,10 +460,14 @@ with tab3:
         if not df_f.empty:
             df_f['Desvio (Minutos)'] = df_f['REALIZADO MINUTOS'] - df_f['META MINUTOS']
             
+            # --- CORREÇÃO DO CÁLCULO DE RESULTADO ---
+            # Força a coluna a ficar sem espaços em branco e tudo maiúsculo antes de contar
+            df_f['RESULTADO_LIMPO'] = df_f['RESULTADO'].astype(str).str.strip().str.upper()
+            
             ranking = df_f.groupby('CONFERENTE').agg(
                 Cargas_Feitas=('AGENDA', 'count'),
-                Atrasos=('RESULTADO', lambda x: (x == 'ATRASADO').sum()),
-                No_Prazo=('RESULTADO', lambda x: (x == 'NO PRAZO').sum()),
+                Atrasos=('RESULTADO_LIMPO', lambda x: (x == 'ATRASADO').sum()),
+                No_Prazo=('RESULTADO_LIMPO', lambda x: (x == 'NO PRAZO').sum()),
                 Tempo_Medio_Desvio=('Desvio (Minutos)', 'mean')
             ).reset_index()
             
@@ -481,8 +485,8 @@ with tab3:
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
             with col2:
-                st.markdown("#### ⏳ Os Vilões do Relógio (Tempo Médio de Atraso)")
-                st.caption("Barras vermelhas indicam tempo estourado. Verdes indicam agilidade.")
+                st.markdown("#### ⏳ Balanço de Tempo (Gargalo vs Agilidade)")
+                st.caption("Barras vermelhas indicam tempo estourado médio. Verdes indicam agilidade (tempo salvo).")
                 
                 ranking_desvio = ranking.sort_values('Tempo_Medio_Desvio', ascending=False)
                 cores = ['#F44336' if val > 0 else '#4CAF50' for val in ranking_desvio['Tempo_Medio_Desvio']]
@@ -495,7 +499,7 @@ with tab3:
                 st.plotly_chart(fig_desv, use_container_width=True)
                 
             st.markdown("#### 📋 Detalhamento da Equipe")
-            st.dataframe(ranking.style.format({
+            st.dataframe(ranking[['CONFERENTE', 'Cargas_Feitas', 'No_Prazo', 'Atrasos', '% de Acerto', 'Tempo_Medio_Desvio']].style.format({
                 '% de Acerto': '{:.1f}%',
                 'Tempo_Medio_Desvio': '{:.1f} min'
             }), use_container_width=True, hide_index=True)
