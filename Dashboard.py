@@ -589,7 +589,7 @@ with tab3:
             st.markdown("---")
             
             # --- 3. INVESTIGADOR DE CONFERENTE (RAIO-X INDIVIDUAL) ---
-            st.markdown("<div class='bloco-header'>🔍 Investigador de Conferente (Raio-X de Cargas)</div>", unsafe_allow_html=True)
+            st.markdown("<div class='bloco-header'>🔍 Investigador de Conferente </div>", unsafe_allow_html=True)
             
             lista_conferentes = ["Selecione um Conferente..."] + sorted(df_f['CONFERENTE'].unique())
             conferente_alvo = st.selectbox("Escolha quem você quer investigar:", lista_conferentes)
