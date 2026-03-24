@@ -169,8 +169,12 @@ def carregar_dados_conferencia():
             if len(data_fech) > 1:
                 df_fechamento = pd.DataFrame(data_fech[1:], columns=data_fech[0])
                 df_fechamento.columns = df_fechamento.columns.str.strip().str.upper()
-                df_fechamento['META MINUTOS'] = pd.to_numeric(df_fechamento['META MINUTOS'], errors='coerce').fillna(0)
-                df_fechamento['REALIZADO MINUTOS'] = pd.to_numeric(df_fechamento['REALIZADO MINUTOS'], errors='coerce').fillna(0)
+                
+                # A MÁGICA: Limpando a vírgula do Google Sheets antes de fazer conta!
+                if 'META MINUTOS' in df_fechamento.columns:
+                    df_fechamento['META MINUTOS'] = df_fechamento['META MINUTOS'].apply(limpa_numero_br)
+                if 'REALIZADO MINUTOS' in df_fechamento.columns:
+                    df_fechamento['REALIZADO MINUTOS'] = df_fechamento['REALIZADO MINUTOS'].apply(limpa_numero_br)
             else: df_fechamento = pd.DataFrame()
         else: df_fechamento = pd.DataFrame()
             
