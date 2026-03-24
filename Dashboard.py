@@ -37,6 +37,21 @@ def exibir_kpi(titulo, valor, subtitulo="", cor="#0086FF"):
     </div>
     """, unsafe_allow_html=True)
 
+# --- A VACINA DOS NÚMEROS BRASILEIROS ---
+def limpa_numero_br(valor):
+    if pd.isna(valor) or str(valor).strip() in ['', 'NAN', 'NULL', 'NONE']: return 0
+    v = str(valor).strip()
+    # Se tiver vírgula (ex: 1.234,56)
+    if ',' in v:
+        v = v.replace('.', '').replace(',', '.')
+    else:
+        # Se só tiver ponto, é milhar do Brasil (ex: 4.800 vira 4800)
+        v = v.replace('.', '')
+    try:
+        return float(v)
+    except:
+        return 0
+
 # Conversões de Tempo
 def time_to_mins(t_str):
     if pd.isna(t_str) or str(t_str).strip() == '': return 0
@@ -48,8 +63,10 @@ def time_to_mins(t_str):
 
 def mins_to_text(mins):
     if pd.isna(mins) or mins <= 0: return "0m"
-    h = int(mins // 60)
-    m = int(mins % 60)
+    total_m = int(round(mins))
+    if total_m == 0: return "< 1m" # Pra não mostrar 0m se a carga for muito rápida
+    h = total_m // 60
+    m = total_m % 60
     if h > 0: return f"{h}h {m}m"
     return f"{m}m"
 
@@ -73,7 +90,8 @@ def carregar_dados_armazenagem():
         df['NU_ETIQUETA'] = df['NU_ETIQUETA'].astype(str).str.strip()
         df['AGENDA'] = df['AGENDA'].astype(str).str.strip().str.upper()
         df['PRODUTO'] = df['PRODUTO'].astype(str).str.strip()
-        df['QT_PRODUTO'] = pd.to_numeric(df['QT_PRODUTO'], errors='coerce').fillna(0)
+        # Aplica a vacina aqui pra não perdemos peças na armazenagem também!
+        df['QT_PRODUTO'] = df['QT_PRODUTO'].apply(limpa_numero_br)
         df['SITUACAO'] = df['SITUACAO'].astype(str).str.strip()
         df['OPERADOR'] = df['OPERADOR'].astype(str).str.strip().str.upper()
         df['CONFERENTE'] = df['CONFERENTE'].astype(str).str.strip().str.upper()
@@ -117,9 +135,10 @@ def carregar_dados_conferencia():
         df_hist = pd.DataFrame(data_hist[1:], columns=data_hist[0])
         df_hist.columns = df_hist.columns.str.strip().str.upper()
         
-        if 'TMP APC' in df_hist.columns: df_hist['TMP APC'] = pd.to_numeric(df_hist['TMP APC'], errors='coerce').fillna(0)
-        if 'PEÇAS' in df_hist.columns: df_hist['PEÇAS'] = pd.to_numeric(df_hist['PEÇAS'], errors='coerce').fillna(0)
-        if 'SKU' in df_hist.columns: df_hist['SKU'] = pd.to_numeric(df_hist['SKU'], errors='coerce').fillna(0)
+        # APLICANDO A VACINA NO HISTÓRICO
+        if 'TMP APC' in df_hist.columns: df_hist['TMP APC'] = df_hist['TMP APC'].apply(limpa_numero_br)
+        if 'PEÇAS' in df_hist.columns: df_hist['PEÇAS'] = df_hist['PEÇAS'].apply(limpa_numero_br)
+        if 'SKU' in df_hist.columns: df_hist['SKU'] = df_hist['SKU'].apply(limpa_numero_br)
             
         # --- 2. PLANILHA DIA ATUAL ---
         aba_hoje = next((aba for aba in todas_abas if "DIA ATUAL" in aba.title.upper()), None)
@@ -132,9 +151,10 @@ def carregar_dados_conferencia():
         if 'STATUS' in df_hoje.columns: df_hoje.rename(columns={'STATUS': 'STATUS_FISICO'}, inplace=True)
         else: df_hoje['STATUS_FISICO'] = 'INDEFINIDO'
         
-        if 'PEÇAS' in df_hoje.columns: df_hoje['PEÇAS'] = pd.to_numeric(df_hoje['PEÇAS'], errors='coerce').fillna(0)
-        if 'PÇS PENDENTES' in df_hoje.columns: df_hoje['PÇS PENDENTES'] = pd.to_numeric(df_hoje['PÇS PENDENTES'], errors='coerce').fillna(0)
-        if 'SKU' in df_hoje.columns: df_hoje['SKU'] = pd.to_numeric(df_hoje['SKU'], errors='coerce').fillna(0)
+        # APLICANDO A VACINA NO HOJE
+        if 'PEÇAS' in df_hoje.columns: df_hoje['PEÇAS'] = df_hoje['PEÇAS'].apply(limpa_numero_br)
+        if 'PÇS PENDENTES' in df_hoje.columns: df_hoje['PÇS PENDENTES'] = df_hoje['PÇS PENDENTES'].apply(limpa_numero_br)
+        if 'SKU' in df_hoje.columns: df_hoje['SKU'] = df_hoje['SKU'].apply(limpa_numero_br)
         if 'DURAÇÃO CARGA' in df_hoje.columns: df_hoje['DURAÇÃO CARGA'] = df_hoje['DURAÇÃO CARGA'].astype(str).str.strip()
             
         return df_hist, df_hoje
@@ -272,61 +292,51 @@ with tab1:
     else: st.warning("Sem dados de Armazenagem.")
 
 # -------------------------------------------------------------------------
-# ABA 2: CONFERÊNCIA (AGORA COM PREVISÃO PREDITIVA E STATUS DA DOCA)
+# ABA 2: CONFERÊNCIA (O SEU NOVO MOTOR DE METAS PREDITIVAS)
 # -------------------------------------------------------------------------
 with tab2:
     if not df_hist_conf.empty and not df_hoje_conf.empty:
         st.title("🎯 Torre de Conferência e Previsão")
         st.caption("Cálculo preditivo inteligente: Busca no histórico as cargas com o mesmo perfil (Peças e SKUs).")
         
-        # Taxa global de segurança caso chegue um fornecedor totalmente novo
         taxa_global_cd = df_hist_conf['TMP APC'].sum() / df_hist_conf['PEÇAS'].sum() if df_hist_conf['PEÇAS'].sum() > 0 else 1.0
 
-        # O Algoritmo de "Cargas Parecidas"
+        # O Algoritmo de Cargas Gêmeas
         def calcular_meta_inteligente(row, df_historico):
             forn = str(row.get('ORIGEM', '')).strip().upper()
             linha = str(row.get('CATEGORIA', '')).strip().upper()
             pecas = row.get('PEÇAS', 0)
             sku = row.get('SKU', 0)
             
-            # Filtra o mesmo perfil de carga
             df_base = df_historico[(df_historico['FORNECEDOR'].str.upper() == forn) & 
                                    (df_historico['LINHA'].str.upper() == linha)]
             
             if df_base.empty:
-                return pecas * taxa_global_cd # Se nunca recebeu na vida, usa a média do CD
+                return pecas * taxa_global_cd 
                 
-            # Define as margens de "O que é parecido?" (± 30% de folga)
             min_pecas, max_pecas = pecas * 0.7, pecas * 1.3
+            min_sku, max_sku = min(sku * 0.7, sku - 2), max(sku * 1.3, sku + 2)
             
-            # Para SKU, ± 30% pode ser muito restrito se for 1 SKU. Então damos uma margem de ± 2 SKUs no mínimo.
-            min_sku = min(sku * 0.7, sku - 2)
-            max_sku = max(sku * 1.3, sku + 2)
-            
-            # Tenta achar cargas gêmeas (Peça E Sku parecidos)
             df_gemeas = df_base[(df_base['PEÇAS'] >= min_pecas) & (df_base['PEÇAS'] <= max_pecas) & 
                                 (df_base['SKU'] >= min_sku) & (df_base['SKU'] <= max_sku)]
             
             if not df_gemeas.empty:
-                return df_gemeas['TMP APC'].mean() # Retorna a média de tempo bruta dessas cargas
+                return df_gemeas['TMP APC'].mean()
                 
-            # Se não achar igual em Peça e SKU, tenta achar parecido SÓ pelas Peças
             df_primas = df_base[(df_base['PEÇAS'] >= min_pecas) & (df_base['PEÇAS'] <= max_pecas)]
             if not df_primas.empty:
                 return df_primas['TMP APC'].mean()
                 
-            # Se a carga for um monstro (ou minúscula) sem histórico parecido, calcula a velocidade média desse fornecedor
             velocidade_fornecedor = df_base['TMP APC'].sum() / df_base['PEÇAS'].sum() if df_base['PEÇAS'].sum() > 0 else taxa_global_cd
             return pecas * velocidade_fornecedor
 
-        # Aplicações na Tabela do Dia
         df_hoje_conf['DURAÇÃO_REAL_MIN'] = df_hoje_conf['DURAÇÃO CARGA'].apply(time_to_mins)
         df_hoje_conf['STATUS_FISICO'] = df_hoje_conf['STATUS_FISICO'].str.strip().str.upper()
         
-        # Executa a Inteligência Artificial Caseira linha a linha
+        # O Motor entra em Ação aqui
         df_hoje_conf['META_TEMPO_MIN'] = df_hoje_conf.apply(lambda row: calcular_meta_inteligente(row, df_hist_conf), axis=1)
         
-        # --- A MÁGICA DO TEMPO PREDITIVO ---
+        # Cálculos de Previsão
         agora = pd.Timestamp.now(tz='America/Sao_Paulo')
         
         def calcular_previsao(row):
@@ -351,7 +361,7 @@ with tab2:
         df_hoje_conf['PREVISÃO FIM'] = df_hoje_conf.apply(calcular_previsao, axis=1)
         df_hoje_conf['SITUAÇÃO META'] = df_hoje_conf.apply(calcular_situacao_meta, axis=1)
         
-        # KPIs de Conferência
+        # KPIs
         c1, c2, c3, c4 = st.columns(4)
         cargas_totais = len(df_hoje_conf)
         cargas_ok = df_hoje_conf[df_hoje_conf['STATUS_FISICO'] == 'OK'].shape[0]
