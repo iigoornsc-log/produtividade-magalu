@@ -119,24 +119,22 @@ def carregar_dados_conferencia():
         
         if 'TMP APC' in df_hist.columns: df_hist['TMP APC'] = pd.to_numeric(df_hist['TMP APC'], errors='coerce').fillna(0)
         if 'PEÇAS' in df_hist.columns: df_hist['PEÇAS'] = pd.to_numeric(df_hist['PEÇAS'], errors='coerce').fillna(0)
+        if 'SKU' in df_hist.columns: df_hist['SKU'] = pd.to_numeric(df_hist['SKU'], errors='coerce').fillna(0)
             
         # --- 2. PLANILHA DIA ATUAL ---
         aba_hoje = next((aba for aba in todas_abas if "DIA ATUAL" in aba.title.upper()), None)
         if not aba_hoje: raise ValueError("Não encontrei a aba 'Dia Atual'.")
             
-        # AGORA BUSCANDO ATÉ A COLUNA "I" PARA PEGAR O STATUS NOVO
         data_hoje = aba_hoje.get("A:I")
         df_hoje = pd.DataFrame(data_hoje[1:], columns=data_hoje[0])
         df_hoje.columns = df_hoje.columns.str.strip().str.upper()
         
-        # Renomeia o status que veio do sheets para não confundir com a nossa meta
-        if 'STATUS' in df_hoje.columns:
-            df_hoje.rename(columns={'STATUS': 'STATUS_FISICO'}, inplace=True)
-        else:
-            df_hoje['STATUS_FISICO'] = 'INDEFINIDO'
+        if 'STATUS' in df_hoje.columns: df_hoje.rename(columns={'STATUS': 'STATUS_FISICO'}, inplace=True)
+        else: df_hoje['STATUS_FISICO'] = 'INDEFINIDO'
         
         if 'PEÇAS' in df_hoje.columns: df_hoje['PEÇAS'] = pd.to_numeric(df_hoje['PEÇAS'], errors='coerce').fillna(0)
         if 'PÇS PENDENTES' in df_hoje.columns: df_hoje['PÇS PENDENTES'] = pd.to_numeric(df_hoje['PÇS PENDENTES'], errors='coerce').fillna(0)
+        if 'SKU' in df_hoje.columns: df_hoje['SKU'] = pd.to_numeric(df_hoje['SKU'], errors='coerce').fillna(0)
         if 'DURAÇÃO CARGA' in df_hoje.columns: df_hoje['DURAÇÃO CARGA'] = df_hoje['DURAÇÃO CARGA'].astype(str).str.strip()
             
         return df_hist, df_hoje
