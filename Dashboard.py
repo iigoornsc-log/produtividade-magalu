@@ -477,83 +477,54 @@ with tab2:
 
         st.markdown("<br><br>", unsafe_allow_html=True)
         st.markdown("<div style='background-color: #FFFFFF; padding: 20px; border-radius: 12px; border-left: 4px solid #10B981; box-shadow: 0 4px 6px rgba(0,0,0,0.02);'>", unsafe_allow_html=True)
-        st.markdown("### 🤖 Automação de Fechamento")
+        st.markdown("### 🔄 Sincronização Contínua (Anti-Duplicidade)")
         
-        # --- O DISJUNTOR DE SEGURANÇA (Evita Loop Infinito) ---
-        if 'trava_salvamento' not in st.session_state:
-            st.session_state.trava_salvamento = False
-        
-        hora_atual = agora.strftime("%H:%M")
         data_hoje_str = agora.strftime('%d/%m/%Y')
         
-        # Verifica se já existe na planilha
-        ja_salvou_hoje = False
+        # 1. Pega todas as cargas que já terminaram hoje (e tem tempo validado)
+        df_hoje_ok = df_hoje_conf[(df_hoje_conf['STATUS_FISICO'] == 'OK') & (df_hoje_conf['DURAÇÃO_REAL_MIN'] > 0)].copy()
+        
+        # 2. Descobre o que JÁ ESTÁ salvo no cofre hoje
+        agendas_salvas = []
         if not df_fechamento.empty and 'DATA' in df_fechamento.columns:
-            if data_hoje_str in df_fechamento['DATA'].values:
-                ja_salvou_hoje = True
-                st.session_state.trava_salvamento = True # Trava ativada pelo histórico
+            df_fechamento_hoje = df_fechamento[df_fechamento['DATA'] == data_hoje_str]
+            agendas_salvas = df_fechamento_hoje['AGENDA'].tolist()
             
-        if ja_salvou_hoje or st.session_state.trava_salvamento:
-            st.success(f"✅ Fechamento de {data_hoje_str} já está garantido no cofre (ou foi travado por segurança na sessão atual).")
+        # 3. O PULO DO GATO: Filtra APENAS as novidades (que deram OK agora e NÃO estão no cofre)
+        df_para_salvar = df_hoje_ok[~df_hoje_ok['AGENDA'].isin(agendas_salvas)].copy()
+
+        # Layout de status do robô
+        c_sync1, c_sync2 = st.columns(2)
+        c_sync1.metric("📦 Cargas Já Salvas no Cofre (Hoje)", len(agendas_salvas))
+        c_sync2.metric("🆕 Novas Cargas Prontas para Salvar", len(df_para_salvar))
+
+        # 4. Ação Automática
+        if not df_para_salvar.empty:
+            st.info(f"🚀 Foram encontradas {len(df_para_salvar)} novas cargas finalizadas! Salvando no cofre automaticamente...")
             
-            with st.expander("⚙️ Precisa atualizar o fechamento de hoje?"):
-                st.warning("⚠️ **Atenção:** Vá no Google Sheets, EXCLUA AS LINHAS (botão direito > excluir linha) que estão erradas antes de forçar a gravação, para não duplicar dados.")
-                if st.button("🔄 Forçar Gravação Novamente", type="primary"):
-                    df_para_salvar = df_hoje_conf[(df_hoje_conf['STATUS_FISICO'] == 'OK') & (df_hoje_conf['DURAÇÃO_REAL_MIN'] > 0)].copy()
-                    if not df_para_salvar.empty:
-                        df_export = pd.DataFrame({
-                            'DATA': data_hoje_str, 'AGENDA': df_para_salvar['AGENDA'], 'CONFERENTE': df_para_salvar['CONFERENTE'],
-                            'CATEGORIA': df_para_salvar['CATEGORIA'], 'PEÇAS': df_para_salvar['PEÇAS'],
-                            'META MINUTOS': df_para_salvar['META_TEMPO_MIN'].round(2), 'REALIZADO MINUTOS': df_para_salvar['DURAÇÃO_REAL_MIN'].round(2),
-                            'RESULTADO': df_para_salvar['SITUAÇÃO META'].apply(lambda x: 'NO PRAZO' if '✅' in x else 'ATRASADO')
-                        })
-                        with st.spinner("Forçando gravação..."):
-                            sucesso = salvar_historico_fechamento(df_export)
-                            if sucesso:
-                                st.session_state.trava_salvamento = True
-                                st.cache_data.clear()
-                                st.rerun()
-                    else:
-                        st.warning("Nenhuma carga finalizada para salvar.")
+            df_export = pd.DataFrame({
+                'DATA': data_hoje_str, 'AGENDA': df_para_salvar['AGENDA'], 'CONFERENTE': df_para_salvar['CONFERENTE'],
+                'CATEGORIA': df_para_salvar['CATEGORIA'], 'PEÇAS': df_para_salvar['PEÇAS'],
+                'META MINUTOS': df_para_salvar['META_TEMPO_MIN'].round(2), 'REALIZADO MINUTOS': df_para_salvar['DURAÇÃO_REAL_MIN'].round(2),
+                'RESULTADO': df_para_salvar['SITUAÇÃO META'].apply(lambda x: 'NO PRAZO' if '✅' in x else 'ATRASADO')
+            })
+            
+            with st.spinner("Sincronizando Banco de Dados..."):
+                sucesso = salvar_historico_fechamento(df_export)
+                if sucesso:
+                    st.success("✅ Novas cargas sincronizadas com sucesso!")
+                    st.cache_data.clear() # Limpa o cache pra tela atualizar
+                    st.rerun() # Reinicia a tela para atualizar os números
         else:
-            if hora_atual >= "17:20":
-                st.info(f"🕒 Horário atingido. Gravando turno e ativando trava de segurança...")
-                df_para_salvar = df_hoje_conf[(df_hoje_conf['STATUS_FISICO'] == 'OK') & (df_hoje_conf['DURAÇÃO_REAL_MIN'] > 0)].copy()
-                
-                if not df_para_salvar.empty:
-                    df_export = pd.DataFrame({
-                        'DATA': data_hoje_str, 'AGENDA': df_para_salvar['AGENDA'], 'CONFERENTE': df_para_salvar['CONFERENTE'],
-                        'CATEGORIA': df_para_salvar['CATEGORIA'], 'PEÇAS': df_para_salvar['PEÇAS'],
-                        'META MINUTOS': df_para_salvar['META_TEMPO_MIN'].round(2), 'REALIZADO MINUTOS': df_para_salvar['DURAÇÃO_REAL_MIN'].round(2),
-                        'RESULTADO': df_para_salvar['SITUAÇÃO META'].apply(lambda x: 'NO PRAZO' if '✅' in x else 'ATRASADO')
-                    })
-                    with st.spinner("Gravando Banco de Dados..."):
-                        sucesso = salvar_historico_fechamento(df_export)
-                        if sucesso:
-                            st.session_state.trava_salvamento = True # BATE O DISJUNTOR PRA NÃO REPETIR
-                            st.cache_data.clear()
-                            st.rerun()
-                else:
-                    st.warning("O turno virou, mas nenhuma agenda foi finalizada para arquivamento.")
-            else:
-                st.info(f"⏳ O sistema aguarda às **17:20** para o fechamento diário. (Hora local: {hora_atual})")
-                if st.button("Forçar Fechamento Manual", type="secondary"):
-                    df_para_salvar = df_hoje_conf[(df_hoje_conf['STATUS_FISICO'] == 'OK') & (df_hoje_conf['DURAÇÃO_REAL_MIN'] > 0)].copy()
-                    if not df_para_salvar.empty:
-                        df_export = pd.DataFrame({
-                            'DATA': data_hoje_str, 'AGENDA': df_para_salvar['AGENDA'], 'CONFERENTE': df_para_salvar['CONFERENTE'],
-                            'CATEGORIA': df_para_salvar['CATEGORIA'], 'PEÇAS': df_para_salvar['PEÇAS'],
-                            'META MINUTOS': df_para_salvar['META_TEMPO_MIN'].round(2), 'REALIZADO MINUTOS': df_para_salvar['DURAÇÃO_REAL_MIN'].round(2),
-                            'RESULTADO': df_para_salvar['SITUAÇÃO META'].apply(lambda x: 'NO PRAZO' if '✅' in x else 'ATRASADO')
-                        })
-                        with st.spinner("Gravando Banco de Dados..."):
-                            sucesso = salvar_historico_fechamento(df_export)
-                            if sucesso:
-                                st.session_state.trava_salvamento = True # BATE O DISJUNTOR AQUI TAMBÉM
-                                st.cache_data.clear()
-                                st.rerun()
-                    else:
-                        st.warning("Nenhum dado finalizado disponível.")
+            st.success("✅ O Cofre está 100% sincronizado. Nenhuma carga nova pendente de gravação.")
+            
+        # 5. O Botão de Forçar (Agora totalmente seguro e à prova de idiotas)
+        with st.expander("⚙️ Opções Avançadas (Forçar Sincronização)"):
+            st.write("Se você apagou uma linha com defeito direto lá no Google Sheets e quer que o robô faça uma nova varredura para salvar a carga que ficou faltando, clique abaixo:")
+            if st.button("🔄 Sincronizar Cargas Faltantes Agora", type="primary"):
+                st.cache_data.clear()
+                st.rerun()
+
         st.markdown("</div>", unsafe_allow_html=True)
     else:
         st.warning("⚠️ Planilhas de Conferência desconectadas.")
