@@ -99,7 +99,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def exibir_kpi(titulo, valor, subtitulo="", cor="#0086FF"):
-    # Aplica a cor dinâmica na borda superior do card
     st.markdown(f"""
     <div class="kpi-card" style="border-top-color: {cor};">
         <p class="kpi-title">{titulo}</p>
@@ -229,14 +228,13 @@ def carregar_dados_conferencia():
             if 'DURAÇÃO CARGA' in df_hoje.columns: df_hoje['DURAÇÃO CARGA'] = df_hoje['DURAÇÃO CARGA'].astype(str).str.strip()
         else: df_hoje = pd.DataFrame()
 
-        # --- 3. COFRE DE FECHAMENTO (Agora com vacina) ---
+        # --- 3. COFRE DE FECHAMENTO ---
         aba_fechamento = next((aba for aba in todas_abas if "FECHAMENTO" in aba.title.upper()), None)
         if aba_fechamento:
             data_fech = aba_fechamento.get_all_values()
             if len(data_fech) > 1:
                 df_fechamento = pd.DataFrame(data_fech[1:], columns=data_fech[0])
                 df_fechamento.columns = df_fechamento.columns.str.strip().str.upper()
-                # VACINA DA VÍRGULA NO HISTÓRICO
                 if 'META MINUTOS' in df_fechamento.columns:
                     df_fechamento['META MINUTOS'] = df_fechamento['META MINUTOS'].apply(limpa_numero_br)
                 if 'REALIZADO MINUTOS' in df_fechamento.columns:
@@ -364,7 +362,6 @@ with tab1:
 
         if not df_fluxo.empty:
             fig_fluxo = go.Figure()
-            # Ajuste de Cores do Gráfico para o Tema Novo
             fig_fluxo.add_trace(go.Bar(x=df_fluxo['Hora'], y=df_fluxo['Armazenados'], name='Armazenados (Produção)', marker_color='#0086FF', text=df_fluxo['Armazenados'], textposition='auto'))
             fig_fluxo.add_trace(go.Bar(x=df_fluxo['Hora'], y=df_fluxo['Conferidos'], name='Conferidos (Demanda)', marker_color='#94A3B8', text=df_fluxo['Conferidos'], textposition='outside'))
             fig_fluxo.add_trace(go.Scatter(x=df_fluxo['Hora'], y=df_fluxo['Pendências'], name='Fila Acumulada', mode='lines+markers+text', line=dict(color='#EF4444', width=3), yaxis='y2', text=df_fluxo['Pendências'], textposition='top center'))
@@ -481,24 +478,19 @@ with tab2:
         
         data_hoje_str = agora.strftime('%d/%m/%Y')
         
-        # 1. Pega todas as cargas que já terminaram hoje (e tem tempo validado)
         df_hoje_ok = df_hoje_conf[(df_hoje_conf['STATUS_FISICO'] == 'OK') & (df_hoje_conf['DURAÇÃO_REAL_MIN'] > 0)].copy()
         
-        # 2. Descobre o que JÁ ESTÁ salvo no cofre hoje
         agendas_salvas = []
         if not df_fechamento.empty and 'DATA' in df_fechamento.columns:
             df_fechamento_hoje = df_fechamento[df_fechamento['DATA'] == data_hoje_str]
             agendas_salvas = df_fechamento_hoje['AGENDA'].tolist()
             
-        # 3. O PULO DO GATO: Filtra APENAS as novidades (que deram OK agora e NÃO estão no cofre)
         df_para_salvar = df_hoje_ok[~df_hoje_ok['AGENDA'].isin(agendas_salvas)].copy()
 
-        # Layout de status do robô
         c_sync1, c_sync2 = st.columns(2)
         c_sync1.metric("📦 Cargas Já Salvas no Cofre (Hoje)", len(agendas_salvas))
         c_sync2.metric("🆕 Novas Cargas Prontas para Salvar", len(df_para_salvar))
 
-        # 4. Ação Automática
         if not df_para_salvar.empty:
             st.info(f"🚀 Foram encontradas {len(df_para_salvar)} novas cargas finalizadas! Salvando no cofre automaticamente...")
             
@@ -513,12 +505,11 @@ with tab2:
                 sucesso = salvar_historico_fechamento(df_export)
                 if sucesso:
                     st.success("✅ Novas cargas sincronizadas com sucesso!")
-                    st.cache_data.clear() # Limpa o cache pra tela atualizar
-                    st.rerun() # Reinicia a tela para atualizar os números
+                    st.cache_data.clear() 
+                    st.rerun() 
         else:
             st.success("✅ O Cofre está 100% sincronizado. Nenhuma carga nova pendente de gravação.")
             
-        # 5. O Botão de Forçar (Agora totalmente seguro e à prova de idiotas)
         with st.expander("⚙️ Opções Avançadas (Forçar Sincronização)"):
             st.write("Se você apagou uma linha com defeito direto lá no Google Sheets e quer que o robô faça uma nova varredura para salvar a carga que ficou faltando, clique abaixo:")
             if st.button("🔄 Sincronizar Cargas Faltantes Agora", type="primary"):
@@ -542,7 +533,6 @@ with tab3:
         df_f = df_fechamento[df_fechamento['DATA'].isin(data_hist_sel)].copy()
         
         if not df_f.empty:
-            # Cálculos Base
             df_f['Desvio (Minutos)'] = df_f['REALIZADO MINUTOS'] - df_f['META MINUTOS']
             df_f['STATUS_REAL'] = df_f['Desvio (Minutos)'].apply(lambda x: 'ATRASADO' if x > 0 else 'NO PRAZO')
             
@@ -556,7 +546,6 @@ with tab3:
             ranking['% de Acerto'] = (ranking['No_Prazo'] / ranking['Cargas_Feitas']) * 100
             ranking = ranking.sort_values('% de Acerto', ascending=False)
             
-            # --- 1. GRÁFICOS GERAIS DA EQUIPE ---
             col1, col2 = st.columns(2)
             
             with col1:
@@ -580,7 +569,6 @@ with tab3:
                 fig_desv.update_layout(yaxis_title="Minutos (Média de Desvio)", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
                 st.plotly_chart(fig_desv, use_container_width=True)
                 
-            # --- 2. TABELA GERAL ---
             st.markdown("<div class='bloco-header'>Detalhamento Analítico Geral</div>", unsafe_allow_html=True)
             st.dataframe(ranking[['CONFERENTE', 'Cargas_Feitas', 'No_Prazo', 'Atrasos', '% de Acerto', 'Tempo_Medio_Desvio']].style.format({
                 '% de Acerto': '{:.1f}%',
@@ -589,14 +577,12 @@ with tab3:
 
             st.markdown("---")
             
-            # --- 3. INVESTIGADOR DE CONFERENTE (RAIO-X INDIVIDUAL) ---
             st.markdown("<div class='bloco-header'>🔍 Investigador de Conferente </div>", unsafe_allow_html=True)
             
             lista_conferentes = ["Selecione um Conferente..."] + sorted(df_f['CONFERENTE'].unique())
             conferente_alvo = st.selectbox("Escolha quem você quer investigar:", lista_conferentes)
             
             if conferente_alvo != "Selecione um Conferente...":
-                # Filtra só os dados da pessoa
                 df_individual = df_f[df_f['CONFERENTE'] == conferente_alvo].copy()
                 
                 c_k1, c_k2, c_k3 = st.columns(3)
@@ -609,7 +595,6 @@ with tab3:
                 c_k3.metric("Balanço Total (Minutos)", f"{saldo_total_min:.1f} min", 
                             delta=f"{saldo_total_min:.1f} min", delta_color="inverse")
                 
-                # Prepara tabela bonita de cargas
                 st.markdown(f"**Histórico de agendas de {conferente_alvo} (Ordenadas por Data)**")
                 
                 df_detalhe = df_individual[['DATA', 'AGENDA', 'CATEGORIA', 'PEÇAS', 'META MINUTOS', 'REALIZADO MINUTOS', 'Desvio (Minutos)', 'STATUS_REAL']].copy()
@@ -617,7 +602,6 @@ with tab3:
                 df_detalhe['REAL (Tempo)'] = df_detalhe['REALIZADO MINUTOS'].apply(mins_to_text)
                 df_detalhe['Desvio (Minutos)'] = df_detalhe['Desvio (Minutos)'].round(1)
                 
-                # Reordena colunas pra ficar lindo
                 df_detalhe = df_detalhe[['DATA', 'AGENDA', 'CATEGORIA', 'PEÇAS', 'META (Tempo)', 'REAL (Tempo)', 'Desvio (Minutos)', 'STATUS_REAL']]
                 
                 def cor_status_indiv(val):
