@@ -107,7 +107,7 @@ def exibir_kpi(titulo, valor, subtitulo="", cor="#0086FF"):
     </div>
     """, unsafe_allow_html=True)
 
-# --- BLINDAGEM DE TEXTO, NÚMEROS E AGENDAS ---
+# --- BLINDAGEM DE TEXTO E NÚMEROS ---
 def limpa_texto(valor):
     if pd.isna(valor): return ""
     return str(valor).strip().upper()
@@ -115,7 +115,7 @@ def limpa_texto(valor):
 def limpa_agenda(valor):
     if pd.isna(valor) or str(valor).strip() in ['', 'NAN', 'NULL', 'NONE']: return ""
     v = str(valor).strip().upper()
-    if v.endswith('.0'): v = v[:-2] # Arranca o decimal escondido do Sheets
+    if v.endswith('.0'): v = v[:-2] 
     return v
 
 def limpa_numero_br(valor):
@@ -143,6 +143,7 @@ def mins_to_text(mins):
     if h > 0: return f"{h}h {m}m"
     return f"{m}m"
 
+# --- GRAVAR NO COFRE ---
 def salvar_historico_fechamento(df_para_salvar):
     try:
         cred_dict = json.loads(st.secrets["google_json"])
@@ -159,20 +160,40 @@ def salvar_historico_fechamento(df_para_salvar):
 # =========================================================================
 # 2. MOTOR DE DADOS MULTI-PLANILHAS
 # =========================================================================
+
+# LER O COFRE AO VIVO (Isolado e Anti-Loop)
+@st.cache_data(ttl=3) # Cache de apenas 3 segundos pra não estourar API no F5, mas garantir leitura real
+def ler_cofre_vivo():
+    try:
+        cred_dict = json.loads(st.secrets["google_json"])
+        creds = Credentials.from_service_account_info(cred_dict, scopes=["https://www.googleapis.com/auth/spreadsheets"])
+        client = gspread.authorize(creds)
+        sh2 = client.open_by_key('1bj5vIu8LOIWqaW5evogwQeyrJd9yj1iQkXHbJKvTeks')
+        aba_fechamento = sh2.worksheet("FECHAMENTO")
+        data_fech = aba_fechamento.get_all_values()
+        if len(data_fech) > 1:
+            df = pd.DataFrame(data_fech[1:], columns=data_fech[0])
+            df.columns = df.columns.str.strip().str.upper()
+            if 'DATA' in df.columns: df['DATA'] = df['DATA'].apply(limpa_texto)
+            if 'AGENDA' in df.columns: df['AGENDA'] = df['AGENDA'].apply(limpa_agenda)
+            if 'META MINUTOS' in df.columns: df['META MINUTOS'] = df['META MINUTOS'].apply(limpa_numero_br)
+            if 'REALIZADO MINUTOS' in df.columns: df['REALIZADO MINUTOS'] = df['REALIZADO MINUTOS'].apply(limpa_numero_br)
+            return df
+        return pd.DataFrame()
+    except:
+        return pd.DataFrame()
+
 @st.cache_data(ttl=300)
 def carregar_dados_armazenagem():
     try:
         cred_dict = json.loads(st.secrets["google_json"])
         creds = Credentials.from_service_account_info(cred_dict, scopes=["https://www.googleapis.com/auth/spreadsheets"])
         client = gspread.authorize(creds)
-        
         sh = client.open_by_key('1F4Qs5xGPMjgWSO6giHSwFfDf5F-mlv1RuT4riEVU0I0')
         ws = sh.worksheet("ACOMPANHAMENTO GERAL")
         data = ws.get_all_values()
-        
         df = pd.DataFrame(data[1:], columns=data[0])
         df.columns = df.columns.str.strip().str.upper() 
-        
         df['NU_ETIQUETA'] = df['NU_ETIQUETA'].apply(limpa_texto)
         df['AGENDA'] = df['AGENDA'].apply(limpa_agenda)
         df['PRODUTO'] = df['PRODUTO'].apply(limpa_texto)
@@ -180,26 +201,20 @@ def carregar_dados_armazenagem():
         df['SITUACAO'] = df['SITUACAO'].apply(limpa_texto)
         df['OPERADOR'] = df['OPERADOR'].apply(limpa_texto)
         df['CONFERENTE'] = df['CONFERENTE'].apply(limpa_texto)
-        
         df['Data_Ref'] = pd.to_datetime(df['DATA'], format='%d/%m/%Y', errors='coerce').dt.date
         df['DT_CONFERENCIA_CALC'] = pd.to_datetime(df['DT_CONFERENCIA'], errors='coerce') 
         df['DT_ARMAZENAGEM_CALC'] = pd.to_datetime(df['DT_ARMAZENAGEM'], format='%d/%m/%Y %H:%M:%S', errors='coerce')
-        
         df['Data_Conf'] = df['DT_CONFERENCIA_CALC'].dt.date
         df['Data_Armz'] = df['Data_Ref'] 
-        
         def formata_hora(h):
             if pd.isna(h) or str(h).strip() in ['', 'NAN', 'NULL', 'NONE']: return None
             try: return f"{int(float(h)):02d}:00"
             except: return None
-                
         df['Hora_Conf'] = df['HORA CONF'].apply(formata_hora)
         df['Hora_Armz'] = df['HORA ARMZ'].apply(formata_hora)
         df['Tempo_Espera_Minutos'] = (df['DT_ARMAZENAGEM_CALC'] - df['DT_CONFERENCIA_CALC']).dt.total_seconds() / 60.0
-        
         return df.dropna(subset=['Data_Ref'])
-    except Exception as e:
-        st.error(f"Erro Armazenagem: {e}")
+    except:
         return pd.DataFrame()
 
 @st.cache_data(ttl=300)
@@ -208,11 +223,10 @@ def carregar_dados_conferencia():
         cred_dict = json.loads(st.secrets["google_json"])
         creds = Credentials.from_service_account_info(cred_dict, scopes=["https://www.googleapis.com/auth/spreadsheets"])
         client = gspread.authorize(creds)
-        
         sh2 = client.open_by_key('1bj5vIu8LOIWqaW5evogwQeyrJd9yj1iQkXHbJKvTeks')
         todas_abas = sh2.worksheets()
         
-        # --- 1. HISTÓRICO (BASE DE DADOS) ---
+        # 1. BASE HISTÓRICA
         aba_hist = next((aba for aba in todas_abas if "BASE DE DADOS" in aba.title.upper()), None)
         if aba_hist:
             data_hist = aba_hist.get("Q:W")
@@ -223,40 +237,22 @@ def carregar_dados_conferencia():
             if 'SKU' in df_hist.columns: df_hist['SKU'] = df_hist['SKU'].apply(limpa_numero_br)
         else: df_hist = pd.DataFrame()
             
-        # --- 2. PLANILHA DIA ATUAL ---
+        # 2. DIA ATUAL
         aba_hoje = next((aba for aba in todas_abas if "DIA ATUAL" in aba.title.upper()), None)
         if aba_hoje:
             data_hoje = aba_hoje.get("A:I")
             df_hoje = pd.DataFrame(data_hoje[1:], columns=data_hoje[0])
             df_hoje.columns = df_hoje.columns.str.strip().str.upper()
-            
             if 'AGENDA' in df_hoje.columns: df_hoje['AGENDA'] = df_hoje['AGENDA'].apply(limpa_agenda)
             if 'STATUS' in df_hoje.columns: df_hoje.rename(columns={'STATUS': 'STATUS_FISICO'}, inplace=True)
             if 'PEÇAS' in df_hoje.columns: df_hoje['PEÇAS'] = df_hoje['PEÇAS'].apply(limpa_numero_br)
-            if 'PÇS PENDENTES' in df_hoje.columns: df_hoje['PÇS PENDENTES'] = df_hoje['PÇS PENDENTES'].apply(limpa_numero_br)
             if 'SKU' in df_hoje.columns: df_hoje['SKU'] = df_hoje['SKU'].apply(limpa_numero_br)
             if 'DURAÇÃO CARGA' in df_hoje.columns: df_hoje['DURAÇÃO CARGA'] = df_hoje['DURAÇÃO CARGA'].astype(str).str.strip()
         else: df_hoje = pd.DataFrame()
-
-        # --- 3. COFRE DE FECHAMENTO ---
-        aba_fechamento = next((aba for aba in todas_abas if "FECHAMENTO" in aba.title.upper()), None)
-        if aba_fechamento:
-            data_fech = aba_fechamento.get_all_values()
-            if len(data_fech) > 1:
-                df_fechamento = pd.DataFrame(data_fech[1:], columns=data_fech[0])
-                df_fechamento.columns = df_fechamento.columns.str.strip().str.upper()
-                
-                if 'DATA' in df_fechamento.columns: df_fechamento['DATA'] = df_fechamento['DATA'].apply(limpa_texto)
-                if 'AGENDA' in df_fechamento.columns: df_fechamento['AGENDA'] = df_fechamento['AGENDA'].apply(limpa_agenda)
-                if 'META MINUTOS' in df_fechamento.columns: df_fechamento['META MINUTOS'] = df_fechamento['META MINUTOS'].apply(limpa_numero_br)
-                if 'REALIZADO MINUTOS' in df_fechamento.columns: df_fechamento['REALIZADO MINUTOS'] = df_fechamento['REALIZADO MINUTOS'].apply(limpa_numero_br)
-            else: df_fechamento = pd.DataFrame()
-        else: df_fechamento = pd.DataFrame()
             
-        return df_hist, df_hoje, df_fechamento
-    except Exception as e:
-        st.error(f"Erro Conferência: {e}")
-        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+        return df_hist, df_hoje
+    except:
+        return pd.DataFrame(), pd.DataFrame()
 
 # =========================================================================
 # FUNÇÃO DO POP-UP (RAIO-X DA HORA)
@@ -286,7 +282,8 @@ def popup_detalhe_hora(hora, df_base, data_sel):
 # 3. INTERFACE E ABAS PRINCIPAIS
 # =========================================================================
 df_armz = carregar_dados_armazenagem()
-df_hist_conf, df_hoje_conf, df_fechamento = carregar_dados_conferencia()
+df_hist_conf, df_hoje_conf = carregar_dados_conferencia()
+df_fechamento = ler_cofre_vivo() # Chama o cofre vivo e limpo
 
 st.markdown("<h1 style='color: #0F172A;'>Central de Operações Logísticas <span style='color: #0086FF;'>Magalu</span></h1>", unsafe_allow_html=True)
 
@@ -484,68 +481,44 @@ with tab2:
 
         st.markdown("<br><br>", unsafe_allow_html=True)
         st.markdown("<div style='background-color: #FFFFFF; padding: 20px; border-radius: 12px; border-left: 4px solid #10B981; box-shadow: 0 4px 6px rgba(0,0,0,0.02);'>", unsafe_allow_html=True)
-        st.markdown("### 🔄 Sincronização Contínua (Anti-Duplicidade)")
+        st.markdown("### 🔄 Sincronização Contínua (Anti-F5)")
         
         data_hoje_str = agora.strftime('%d/%m/%Y')
         
-        # --- DISJUNTOR DE SEGURANÇA MÁXIMA ---
-        if 'agendas_enviadas_sessao' not in st.session_state:
-            st.session_state.agendas_enviadas_sessao = []
-        if 'sync_count' not in st.session_state:
-            st.session_state.sync_count = 0
-            
-        # 1. Pega todas as cargas finalizadas (OK) com tempo gasto
+        # 1. Pega todas as cargas que já terminaram hoje (sem agendas repetidas no dia)
         df_hoje_ok = df_hoje_conf[(df_hoje_conf['STATUS_FISICO'] == 'OK') & (df_hoje_conf['DURAÇÃO_REAL_MIN'] > 0)].copy()
-        # Garante que não tem agenda repetida no dia de hoje
         df_hoje_ok = df_hoje_ok.drop_duplicates(subset=['AGENDA'])
         
-        # 2. Descobre quais agendas JÁ ESTÃO no cofre (Cérebro do Histórico)
+        # 2. Descobre quais agendas JÁ ESTÃO no cofre de forma segura
         agendas_no_cofre = []
         if not df_fechamento.empty and 'AGENDA' in df_fechamento.columns:
             agendas_no_cofre = df_fechamento['AGENDA'].astype(str).tolist()
             
-        # 3. Trava de Memória: Cofre + Memória da Sessão atual
-        agendas_bloqueadas = list(set(agendas_no_cofre + st.session_state.agendas_enviadas_sessao))
-            
-        # 4. Filtra APENAS o que NUNCA foi enviado
-        df_para_salvar = df_hoje_ok[~df_hoje_ok['AGENDA'].astype(str).isin(agendas_bloqueadas)].copy()
+        # 3. O Filtro Supremo: Pega só o que não tá no cofre
+        df_para_salvar = df_hoje_ok[~df_hoje_ok['AGENDA'].astype(str).isin(agendas_no_cofre)].copy()
 
         c_sync1, c_sync2 = st.columns(2)
         c_sync1.metric("📦 Cargas Registradas (Cofre)", len(agendas_no_cofre))
         c_sync2.metric("🆕 Novas Cargas na Fila", len(df_para_salvar))
 
         if not df_para_salvar.empty:
-            if st.session_state.sync_count > 3:
-                st.error("🛑 Proteção contra Loop ativada! O robô tentou sincronizar várias vezes seguidas. Verifique se o Google Sheets está formatando as agendas corretamente. Clique em 'Reiniciar' abaixo para tentar de novo.")
-            else:
-                st.info(f"🚀 Foram encontradas {len(df_para_salvar)} novas cargas finalizadas! Salvando no cofre automaticamente...")
-                
-                df_export = pd.DataFrame({
-                    'DATA': data_hoje_str, 'AGENDA': df_para_salvar['AGENDA'], 'CONFERENTE': df_para_salvar['CONFERENTE'],
-                    'CATEGORIA': df_para_salvar['CATEGORIA'], 'PEÇAS': df_para_salvar['PEÇAS'],
-                    'META MINUTOS': df_para_salvar['META_TEMPO_MIN'].round(2), 'REALIZADO MINUTOS': df_para_salvar['DURAÇÃO_REAL_MIN'].round(2),
-                    'RESULTADO': df_para_salvar['SITUAÇÃO META'].apply(lambda x: 'NO PRAZO' if '✅' in x else 'ATRASADO')
-                })
-                
-                with st.spinner("Sincronizando Banco de Dados..."):
-                    sucesso = salvar_historico_fechamento(df_export)
-                    if sucesso:
-                        st.session_state.agendas_enviadas_sessao.extend(df_para_salvar['AGENDA'].tolist())
-                        st.session_state.sync_count += 1
-                        st.success("✅ Novas cargas sincronizadas com sucesso!")
-                        st.cache_data.clear() 
-                        st.rerun() 
-        else:
-            st.session_state.sync_count = 0 # Reseta o contador já que tá tudo em paz
-            st.success("✅ O Cofre está 100% sincronizado. Nenhuma carga nova pendente de gravação.")
+            st.info(f"🚀 Foram encontradas {len(df_para_salvar)} novas cargas finalizadas! Salvando no cofre automaticamente...")
             
-        with st.expander("⚙️ Opções Avançadas (Forçar Sincronização)"):
-            st.write("Se você apagou uma linha com defeito direto lá no Google Sheets e quer que o robô faça uma nova varredura, clique abaixo:")
-            if st.button("🔄 Reiniciar Motor de Sincronização", type="primary"):
-                st.session_state.agendas_enviadas_sessao = []
-                st.session_state.sync_count = 0
-                st.cache_data.clear()
-                st.rerun()
+            df_export = pd.DataFrame({
+                'DATA': data_hoje_str, 'AGENDA': df_para_salvar['AGENDA'], 'CONFERENTE': df_para_salvar['CONFERENTE'],
+                'CATEGORIA': df_para_salvar['CATEGORIA'], 'PEÇAS': df_para_salvar['PEÇAS'],
+                'META MINUTOS': df_para_salvar['META_TEMPO_MIN'].round(2), 'REALIZADO MINUTOS': df_para_salvar['DURAÇÃO_REAL_MIN'].round(2),
+                'RESULTADO': df_para_salvar['SITUAÇÃO META'].apply(lambda x: 'NO PRAZO' if '✅' in x else 'ATRASADO')
+            })
+            
+            with st.spinner("Sincronizando Banco de Dados..."):
+                sucesso = salvar_historico_fechamento(df_export)
+                if sucesso:
+                    st.success("✅ Novas cargas sincronizadas com sucesso!")
+                    st.cache_data.clear() # Limpa as fotos antigas
+                    st.rerun() # Atualiza a tela (O robô vai ler o cofre vivo e parar o processo)
+        else:
+            st.success("✅ O Cofre está 100% sincronizado. Nenhuma carga nova pendente de gravação.")
 
         st.markdown("</div>", unsafe_allow_html=True)
     else:
