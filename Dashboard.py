@@ -107,7 +107,7 @@ def exibir_kpi(titulo, valor, subtitulo="", cor="#0086FF"):
     </div>
     """, unsafe_allow_html=True)
 
-# --- A VACINA DOS NÚMEROS BRASILEIROS ---
+# --- A VACINA DOS NÚMEROS BRASILEIROS E LIMPEZA DE TEXTO ---
 def limpa_numero_br(valor):
     if pd.isna(valor) or str(valor).strip() in ['', 'NAN', 'NULL', 'NONE']: return 0
     v = str(valor).strip()
@@ -115,6 +115,11 @@ def limpa_numero_br(valor):
     else: v = v.replace('.', '')
     try: return float(v)
     except: return 0
+
+def limpa_texto(valor):
+    if pd.isna(valor): return ""
+    # Transforma em string, arranca espaços inúteis no começo/fim e joga pra maiúsculo
+    return str(valor).strip().upper()
 
 # --- CONVERSÕES DE TEMPO ---
 def time_to_mins(t_str):
@@ -165,13 +170,13 @@ def carregar_dados_armazenagem():
         df = pd.DataFrame(data[1:], columns=data[0])
         df.columns = df.columns.str.strip().str.upper() 
         
-        df['NU_ETIQUETA'] = df['NU_ETIQUETA'].astype(str).str.strip()
-        df['AGENDA'] = df['AGENDA'].astype(str).str.strip().str.upper()
-        df['PRODUTO'] = df['PRODUTO'].astype(str).str.strip()
+        df['NU_ETIQUETA'] = df['NU_ETIQUETA'].apply(limpa_texto)
+        df['AGENDA'] = df['AGENDA'].apply(limpa_texto)
+        df['PRODUTO'] = df['PRODUTO'].apply(limpa_texto)
         df['QT_PRODUTO'] = df['QT_PRODUTO'].apply(limpa_numero_br)
-        df['SITUACAO'] = df['SITUACAO'].astype(str).str.strip()
-        df['OPERADOR'] = df['OPERADOR'].astype(str).str.strip().str.upper()
-        df['CONFERENTE'] = df['CONFERENTE'].astype(str).str.strip().str.upper()
+        df['SITUACAO'] = df['SITUACAO'].apply(limpa_texto)
+        df['OPERADOR'] = df['OPERADOR'].apply(limpa_texto)
+        df['CONFERENTE'] = df['CONFERENTE'].apply(limpa_texto)
         
         df['Data_Ref'] = pd.to_datetime(df['DATA'], format='%d/%m/%Y', errors='coerce').dt.date
         df['DT_CONFERENCIA_CALC'] = pd.to_datetime(df['DT_CONFERENCIA'], errors='coerce') 
@@ -222,8 +227,8 @@ def carregar_dados_conferencia():
             df_hoje = pd.DataFrame(data_hoje[1:], columns=data_hoje[0])
             df_hoje.columns = df_hoje.columns.str.strip().str.upper()
             
-            # Limpeza FORTE na agenda pra não dar BO
-            if 'AGENDA' in df_hoje.columns: df_hoje['AGENDA'] = df_hoje['AGENDA'].astype(str).str.strip().str.upper()
+            # BLINDAGEM FORTE DAS COLUNAS DO DIA ATUAL
+            if 'AGENDA' in df_hoje.columns: df_hoje['AGENDA'] = df_hoje['AGENDA'].apply(limpa_texto)
             if 'STATUS' in df_hoje.columns: df_hoje.rename(columns={'STATUS': 'STATUS_FISICO'}, inplace=True)
             if 'PEÇAS' in df_hoje.columns: df_hoje['PEÇAS'] = df_hoje['PEÇAS'].apply(limpa_numero_br)
             if 'PÇS PENDENTES' in df_hoje.columns: df_hoje['PÇS PENDENTES'] = df_hoje['PÇS PENDENTES'].apply(limpa_numero_br)
@@ -239,42 +244,11 @@ def carregar_dados_conferencia():
                 df_fechamento = pd.DataFrame(data_fech[1:], columns=data_fech[0])
                 df_fechamento.columns = df_fechamento.columns.str.strip().str.upper()
                 
-                # Limpeza FORTE na agenda do cofre
-                if 'AGENDA' in df_fechamento.columns: df_fechamento['AGENDA'] = df_fechamento['AGENDA'].astype(str).str.strip().str.upper()
+                # BLINDAGEM FORTE DA LEITURA DO COFRE
+                if 'DATA' in df_fechamento.columns: df_fechamento['DATA'] = df_fechamento['DATA'].apply(limpa_texto)
+                if 'AGENDA' in df_fechamento.columns: df_fechamento['AGENDA'] = df_fechamento['AGENDA'].apply(limpa_texto)
                 if 'META MINUTOS' in df_fechamento.columns: df_fechamento['META MINUTOS'] = df_fechamento['META MINUTOS'].apply(limpa_numero_br)
                 if 'REALIZADO MINUTOS' in df_fechamento.columns: df_fechamento['REALIZADO MINUTOS'] = df_fechamento['REALIZADO MINUTOS'].apply(limpa_numero_br)
-            else: df_fechamento = pd.DataFrame()
-        else: df_fechamento = pd.DataFrame()
-            
-        return df_hist, df_hoje, df_fechamento
-    except Exception as e:
-        st.error(f"Erro Conferência: {e}")
-        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
-            
-        # --- 2. PLANILHA DIA ATUAL ---
-        aba_hoje = next((aba for aba in todas_abas if "DIA ATUAL" in aba.title.upper()), None)
-        if aba_hoje:
-            data_hoje = aba_hoje.get("A:I")
-            df_hoje = pd.DataFrame(data_hoje[1:], columns=data_hoje[0])
-            df_hoje.columns = df_hoje.columns.str.strip().str.upper()
-            if 'STATUS' in df_hoje.columns: df_hoje.rename(columns={'STATUS': 'STATUS_FISICO'}, inplace=True)
-            if 'PEÇAS' in df_hoje.columns: df_hoje['PEÇAS'] = df_hoje['PEÇAS'].apply(limpa_numero_br)
-            if 'PÇS PENDENTES' in df_hoje.columns: df_hoje['PÇS PENDENTES'] = df_hoje['PÇS PENDENTES'].apply(limpa_numero_br)
-            if 'SKU' in df_hoje.columns: df_hoje['SKU'] = df_hoje['SKU'].apply(limpa_numero_br)
-            if 'DURAÇÃO CARGA' in df_hoje.columns: df_hoje['DURAÇÃO CARGA'] = df_hoje['DURAÇÃO CARGA'].astype(str).str.strip()
-        else: df_hoje = pd.DataFrame()
-
-        # --- 3. COFRE DE FECHAMENTO ---
-        aba_fechamento = next((aba for aba in todas_abas if "FECHAMENTO" in aba.title.upper()), None)
-        if aba_fechamento:
-            data_fech = aba_fechamento.get_all_values()
-            if len(data_fech) > 1:
-                df_fechamento = pd.DataFrame(data_fech[1:], columns=data_fech[0])
-                df_fechamento.columns = df_fechamento.columns.str.strip().str.upper()
-                if 'META MINUTOS' in df_fechamento.columns:
-                    df_fechamento['META MINUTOS'] = df_fechamento['META MINUTOS'].apply(limpa_numero_br)
-                if 'REALIZADO MINUTOS' in df_fechamento.columns:
-                    df_fechamento['REALIZADO MINUTOS'] = df_fechamento['REALIZADO MINUTOS'].apply(limpa_numero_br)
             else: df_fechamento = pd.DataFrame()
         else: df_fechamento = pd.DataFrame()
             
@@ -421,7 +395,7 @@ with tab1:
     else: st.warning("Sem dados de Armazenagem.")
 
 # -------------------------------------------------------------------------
-# ABA 2: CONFERÊNCIA (METAS PREDITIVAS E AUTO-SAVE)
+# ABA 2: CONFERÊNCIA (METAS PREDITIVAS E AUTO-SAVE BLINDADO)
 # -------------------------------------------------------------------------
 with tab2:
     if not df_hist_conf.empty and not df_hoje_conf.empty:
@@ -514,30 +488,25 @@ with tab2:
         
         data_hoje_str = agora.strftime('%d/%m/%Y')
         
-        # --- DISJUNTOR DE SEGURANÇA (Memória do Robô) ---
-        if 'agendas_enviadas_sessao' not in st.session_state:
-            st.session_state.agendas_enviadas_sessao = []
-        
         # 1. Pega todas as cargas que já terminaram hoje
         df_hoje_ok = df_hoje_conf[(df_hoje_conf['STATUS_FISICO'] == 'OK') & (df_hoje_conf['DURAÇÃO_REAL_MIN'] > 0)].copy()
         
-        # 2. Descobre quais agendas JÁ ESTÃO no cofre
-        agendas_no_cofre = []
-        if not df_fechamento.empty and 'AGENDA' in df_fechamento.columns:
-            agendas_no_cofre = df_fechamento['AGENDA'].tolist()
+        # 2. Descobre quais agendas JÁ ESTÃO no cofre hoje
+        agendas_salvas = []
+        if not df_fechamento.empty and 'DATA' in df_fechamento.columns and 'AGENDA' in df_fechamento.columns:
+            df_fech_hoje = df_fechamento[df_fechamento['DATA'] == data_hoje_str]
+            agendas_salvas = df_fech_hoje['AGENDA'].tolist()
             
-        # 3. Junta as agendas do cofre com as que o robô acabou de mandar nesta tela aberta
-        agendas_bloqueadas = list(set(agendas_no_cofre + st.session_state.agendas_enviadas_sessao))
-            
-        # 4. Filtra APENAS as novidades absolutas
-        df_para_salvar = df_hoje_ok[~df_hoje_ok['AGENDA'].isin(agendas_bloqueadas)].copy()
+        # 3. O PULO DO GATO: Filtra APENAS as novidades absolutas
+        df_para_salvar = df_hoje_ok[~df_hoje_ok['AGENDA'].isin(agendas_salvas)].copy()
 
         c_sync1, c_sync2 = st.columns(2)
-        c_sync1.metric("📦 Cargas Registradas (Cofre)", len(agendas_no_cofre))
-        c_sync2.metric("🆕 Novas Cargas na Fila", len(df_para_salvar))
+        c_sync1.metric("📦 Cargas Já Salvas no Cofre (Hoje)", len(agendas_salvas))
+        c_sync2.metric("🆕 Novas Cargas Prontas para Salvar", len(df_para_salvar))
 
+        # 4. Ação Automática
         if not df_para_salvar.empty:
-            st.info(f"🚀 {len(df_para_salvar)} novas cargas validadas! Enviando para o cofre...")
+            st.info(f"🚀 Foram encontradas {len(df_para_salvar)} novas cargas finalizadas! Salvando no cofre automaticamente...")
             
             df_export = pd.DataFrame({
                 'DATA': data_hoje_str, 'AGENDA': df_para_salvar['AGENDA'], 'CONFERENTE': df_para_salvar['CONFERENTE'],
@@ -549,18 +518,17 @@ with tab2:
             with st.spinner("Sincronizando Banco de Dados..."):
                 sucesso = salvar_historico_fechamento(df_export)
                 if sucesso:
-                    # BATE O DISJUNTOR: Salva na memória quais foram as agendas pra não repetir
-                    st.session_state.agendas_enviadas_sessao.extend(df_para_salvar['AGENDA'].tolist())
-                    st.success("✅ Cargas sincronizadas com sucesso!")
+                    st.success("✅ Novas cargas sincronizadas com sucesso!")
+                    # O segredo: Não precisa de session_state se o clear cache for imediato!
                     st.cache_data.clear() 
                     st.rerun() 
         else:
-            st.success("✅ Tudo atualizado! Nenhuma pendência de sincronização no momento.")
+            st.success("✅ O Cofre está 100% sincronizado. Nenhuma carga nova pendente de gravação.")
             
+        # 5. O Botão de Forçar
         with st.expander("⚙️ Opções Avançadas (Forçar Sincronização)"):
-            st.write("Se você corrigiu o Google Sheets manualmente, pode forçar o robô a esquecer a memória e buscar cargas novamente:")
-            if st.button("🔄 Reiniciar Varredura de Cargas", type="primary"):
-                st.session_state.agendas_enviadas_sessao = [] # Zera a memória
+            st.write("Se você apagou uma linha com defeito direto lá no Google Sheets e quer que o robô faça uma nova varredura para salvar a carga que ficou faltando, clique abaixo:")
+            if st.button("🔄 Sincronizar Cargas Faltantes Agora", type="primary"):
                 st.cache_data.clear()
                 st.rerun()
 
