@@ -391,6 +391,37 @@ with tab1:
                 popup_detalhe_hora(ev["selection"]["points"][0].get("x"), df_base_armz, data_sel)
     else: st.warning("Sem dados de Armazenagem.")
 
+# =========================================================================
+        # BLOCO 3 (ABA 1): PRODUTIVIDADE DOS OPERADORES DE ARMAZENAGEM
+        # =========================================================================
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("<div class='bloco-header'>🏆 Ranking de Produtividade: Operadores</div>", unsafe_allow_html=True)
+        
+        if not df_producao_equipe.empty:
+            # Agrupa os dados por operador (Só Situação 25 do dia filtrado)
+            rank_op = df_producao_equipe.groupby('OPERADOR').agg(
+                Etiquetas_Armazenadas=('NU_ETIQUETA', 'nunique'),
+                Horas_Trabalhadas=('Hora_Armz', 'nunique'),
+                SLA_Medio=('Tempo_Espera_Minutos', 'mean')
+            ).reset_index()
+            
+            # Calcula a média por hora
+            rank_op['Média (Etq/Hora)'] = (rank_op['Etiquetas_Armazenadas'] / rank_op['Horas_Trabalhadas'].replace(0, 1)).round(1)
+            
+            # Formata o Tempo (SLA) para ficar bonito (Ex: 1h 30m)
+            rank_op['Tempo Médio na Doca'] = rank_op['SLA_Medio'].apply(mins_to_text)
+            
+            # Ordena do melhor para o pior
+            rank_op = rank_op.sort_values('Etiquetas_Armazenadas', ascending=False)
+            
+            # Seleciona as colunas finais
+            df_rank_display = rank_op[['OPERADOR', 'Etiquetas_Armazenadas', 'Média (Etq/Hora)', 'Tempo Médio na Doca']].copy()
+            df_rank_display.columns = ['Operador', 'Total Armazenado', 'Velocidade (Etq/Hora)', 'SLA Médio da Doca']
+            
+            st.dataframe(df_rank_display, use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhuma armazenagem registrada para a equipe selecionada nesta data.")
+
 # -------------------------------------------------------------------------
 # ABA 2: CONFERÊNCIA (METAS PREDITIVAS E AUTO-SAVE BLINDADO)
 # -------------------------------------------------------------------------
