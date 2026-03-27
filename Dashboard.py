@@ -162,7 +162,7 @@ def salvar_historico_fechamento(df_para_salvar):
 # =========================================================================
 
 # LER O COFRE AO VIVO (Isolado e Anti-Loop)
-@st.cache_data(ttl=3) # Cache de apenas 3 segundos pra não estourar API no F5, mas garantir leitura real
+@st.cache_data(ttl=3) 
 def ler_cofre_vivo():
     try:
         cred_dict = json.loads(st.secrets["google_json"])
@@ -283,7 +283,7 @@ def popup_detalhe_hora(hora, df_base, data_sel):
 # =========================================================================
 df_armz = carregar_dados_armazenagem()
 df_hist_conf, df_hoje_conf = carregar_dados_conferencia()
-df_fechamento = ler_cofre_vivo() # Chama o cofre vivo e limpo
+df_fechamento = ler_cofre_vivo()
 
 st.markdown("<h1 style='color: #0F172A;'>Central de Operações Logísticas <span style='color: #0086FF;'>Magalu</span></h1>", unsafe_allow_html=True)
 
@@ -389,38 +389,31 @@ with tab1:
             if hora_manual != "Selecione...": popup_detalhe_hora(hora_manual, df_base_armz, data_sel)
             elif isinstance(ev, dict) and "selection" in ev and ev["selection"].get("points"):
                 popup_detalhe_hora(ev["selection"]["points"][0].get("x"), df_base_armz, data_sel)
-    else: st.warning("Sem dados de Armazenagem.")
 
-# =========================================================================
+        # =========================================================================
         # BLOCO 3 (ABA 1): PRODUTIVIDADE DOS OPERADORES DE ARMAZENAGEM
         # =========================================================================
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("<div class='bloco-header'>🏆 Ranking de Produtividade: Operadores</div>", unsafe_allow_html=True)
         
         if not df_producao_equipe.empty:
-            # Agrupa os dados por operador (Só Situação 25 do dia filtrado)
             rank_op = df_producao_equipe.groupby('OPERADOR').agg(
                 Etiquetas_Armazenadas=('NU_ETIQUETA', 'nunique'),
                 Horas_Trabalhadas=('Hora_Armz', 'nunique'),
                 SLA_Medio=('Tempo_Espera_Minutos', 'mean')
             ).reset_index()
             
-            # Calcula a média por hora
             rank_op['Média (Etq/Hora)'] = (rank_op['Etiquetas_Armazenadas'] / rank_op['Horas_Trabalhadas'].replace(0, 1)).round(1)
-            
-            # Formata o Tempo (SLA) para ficar bonito (Ex: 1h 30m)
             rank_op['Tempo Médio na Doca'] = rank_op['SLA_Medio'].apply(mins_to_text)
-            
-            # Ordena do melhor para o pior
             rank_op = rank_op.sort_values('Etiquetas_Armazenadas', ascending=False)
             
-            # Seleciona as colunas finais
             df_rank_display = rank_op[['OPERADOR', 'Etiquetas_Armazenadas', 'Média (Etq/Hora)', 'Tempo Médio na Doca']].copy()
             df_rank_display.columns = ['Operador', 'Total Armazenado', 'Velocidade (Etq/Hora)', 'SLA Médio da Doca']
             
             st.dataframe(df_rank_display, use_container_width=True, hide_index=True)
         else:
             st.info("Nenhuma armazenagem registrada para a equipe selecionada nesta data.")
+    else: st.warning("Sem dados de Armazenagem.")
 
 # -------------------------------------------------------------------------
 # ABA 2: CONFERÊNCIA (METAS PREDITIVAS E AUTO-SAVE BLINDADO)
@@ -437,26 +430,34 @@ with tab2:
             pecas = row.get('PEÇAS', 0)
             sku = row.get('SKU', 0)
             
+            TEMPO_SETUP = 15
+            
             min_pecas, max_pecas = pecas * 0.7, pecas * 1.3
             min_sku, max_sku = min(sku * 0.7, sku - 2), max(sku * 1.3, sku + 2)
 
-            df_base_exata = df_historico[(df_historico['FORNECEDOR'].str.upper() == forn) & (df_historico['LINHA'].str.upper() == linha)]
+            df_historico_limpo = df_historico[df_historico['TMP APC'] > 0]
+
+            df_base_exata = df_historico_limpo[(df_historico_limpo['FORNECEDOR'].str.upper() == forn) & (df_historico_limpo['LINHA'].str.upper() == linha)]
             if not df_base_exata.empty:
                 df_gemeas = df_base_exata[(df_base_exata['PEÇAS'] >= min_pecas) & (df_base_exata['PEÇAS'] <= max_pecas) & (df_base_exata['SKU'] >= min_sku) & (df_base_exata['SKU'] <= max_sku)]
                 if not df_gemeas.empty: return df_gemeas['TMP APC'].mean()
                 df_primas = df_base_exata[(df_base_exata['PEÇAS'] >= min_pecas) & (df_base_exata['PEÇAS'] <= max_pecas)]
                 if not df_primas.empty: return df_primas['TMP APC'].mean()
-                if df_base_exata['PEÇAS'].sum() > 0: return pecas * (df_base_exata['TMP APC'].sum() / df_base_exata['PEÇAS'].sum())
+                if df_base_exata['PEÇAS'].sum() > 0: 
+                    vel = df_base_exata['TMP APC'].sum() / df_base_exata['PEÇAS'].sum()
+                    return TEMPO_SETUP + (pecas * vel)
 
-            df_base_categoria = df_historico[df_historico['LINHA'].str.upper() == linha]
+            df_base_categoria = df_historico_limpo[df_historico_limpo['LINHA'].str.upper() == linha]
             if not df_base_categoria.empty:
                 df_gemeas_cat = df_base_categoria[(df_base_categoria['PEÇAS'] >= min_pecas) & (df_base_categoria['PEÇAS'] <= max_pecas) & (df_base_categoria['SKU'] >= min_sku) & (df_base_categoria['SKU'] <= max_sku)]
                 if not df_gemeas_cat.empty: return df_gemeas_cat['TMP APC'].mean()
                 df_primas_cat = df_base_categoria[(df_base_categoria['PEÇAS'] >= min_pecas) & (df_base_categoria['PEÇAS'] <= max_pecas)]
                 if not df_primas_cat.empty: return df_primas_cat['TMP APC'].mean()
-                if df_base_categoria['PEÇAS'].sum() > 0: return pecas * (df_base_categoria['TMP APC'].sum() / df_base_categoria['PEÇAS'].sum())
+                if df_base_categoria['PEÇAS'].sum() > 0: 
+                    vel = df_base_categoria['TMP APC'].sum() / df_base_categoria['PEÇAS'].sum()
+                    return TEMPO_SETUP + (pecas * vel)
 
-            return pecas * taxa_global_cd
+            return TEMPO_SETUP + (pecas * taxa_global_cd)
 
         df_hoje_conf['DURAÇÃO_REAL_MIN'] = df_hoje_conf['DURAÇÃO CARGA'].apply(time_to_mins)
         df_hoje_conf['STATUS_FISICO'] = df_hoje_conf['STATUS_FISICO'].str.strip().str.upper()
@@ -516,16 +517,13 @@ with tab2:
         
         data_hoje_str = agora.strftime('%d/%m/%Y')
         
-        # 1. Pega todas as cargas que já terminaram hoje (sem agendas repetidas no dia)
         df_hoje_ok = df_hoje_conf[(df_hoje_conf['STATUS_FISICO'] == 'OK') & (df_hoje_conf['DURAÇÃO_REAL_MIN'] > 0)].copy()
         df_hoje_ok = df_hoje_ok.drop_duplicates(subset=['AGENDA'])
         
-        # 2. Descobre quais agendas JÁ ESTÃO no cofre de forma segura
         agendas_no_cofre = []
         if not df_fechamento.empty and 'AGENDA' in df_fechamento.columns:
             agendas_no_cofre = df_fechamento['AGENDA'].astype(str).tolist()
             
-        # 3. O Filtro Supremo: Pega só o que não tá no cofre
         df_para_salvar = df_hoje_ok[~df_hoje_ok['AGENDA'].astype(str).isin(agendas_no_cofre)].copy()
 
         c_sync1, c_sync2 = st.columns(2)
@@ -546,8 +544,8 @@ with tab2:
                 sucesso = salvar_historico_fechamento(df_export)
                 if sucesso:
                     st.success("✅ Novas cargas sincronizadas com sucesso!")
-                    st.cache_data.clear() # Limpa as fotos antigas
-                    st.rerun() # Atualiza a tela (O robô vai ler o cofre vivo e parar o processo)
+                    st.cache_data.clear() 
+                    st.rerun() 
         else:
             st.success("✅ O Cofre está 100% sincronizado. Nenhuma carga nova pendente de gravação.")
 
