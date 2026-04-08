@@ -161,7 +161,6 @@ def salvar_historico_fechamento(df_para_salvar):
 # 2. MOTOR DE DADOS MULTI-PLANILHAS
 # =========================================================================
 
-# LER O COFRE AO VIVO (Isolado e Anti-Loop)
 @st.cache_data(ttl=3) 
 def ler_cofre_vivo():
     try:
@@ -226,7 +225,6 @@ def carregar_dados_conferencia():
         sh2 = client.open_by_key('1bj5vIu8LOIWqaW5evogwQeyrJd9yj1iQkXHbJKvTeks')
         todas_abas = sh2.worksheets()
         
-        # 1. BASE HISTÓRICA
         aba_hist = next((aba for aba in todas_abas if "BASE DE DADOS" in aba.title.upper()), None)
         if aba_hist:
             data_hist = aba_hist.get("Q:W")
@@ -237,7 +235,6 @@ def carregar_dados_conferencia():
             if 'SKU' in df_hist.columns: df_hist['SKU'] = df_hist['SKU'].apply(limpa_numero_br)
         else: df_hist = pd.DataFrame()
             
-        # 2. DIA ATUAL
         aba_hoje = next((aba for aba in todas_abas if "DIA ATUAL" in aba.title.upper()), None)
         if aba_hoje:
             data_hoje = aba_hoje.get("A:I")
@@ -390,9 +387,6 @@ with tab1:
             elif isinstance(ev, dict) and "selection" in ev and ev["selection"].get("points"):
                 popup_detalhe_hora(ev["selection"]["points"][0].get("x"), df_base_armz, data_sel)
 
-        # =========================================================================
-        # BLOCO 3 (ABA 1): PRODUTIVIDADE DOS OPERADORES DE ARMAZENAGEM
-        # =========================================================================
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("<div class='bloco-header'>🏆 Ranking de Produtividade: Operadores</div>", unsafe_allow_html=True)
         
@@ -422,48 +416,35 @@ with tab2:
     if not df_hist_conf.empty and not df_hoje_conf.empty:
         st.caption("Cálculo preditivo inteligente: O algoritmo localiza cargas irmãs no histórico para gerar a meta mais justa possível.")
         
-        taxa_global_cd = df_hist_conf['TMP APC'].sum() / df_hist_conf['PEÇAS'].sum() if df_hist_conf['PEÇAS'].sum() > 0 else 1.0
-
         def calcular_meta_inteligente(row, df_historico):
             forn = str(row.get('ORIGEM', '')).strip().upper()
             linha = str(row.get('CATEGORIA', '')).strip().upper()
             pecas = row.get('PEÇAS', 0)
             sku = row.get('SKU', 0)
             
-            # Tempo garantido só para o operador encostar o palete, abrir o sistema, etc.
             TEMPO_SETUP = 15
             
             min_pecas, max_pecas = pecas * 0.7, pecas * 1.3
             min_sku, max_sku = min(sku * 0.7, sku - 2), max(sku * 1.3, sku + 2)
 
-            # 1. FILTRO ANTI-THE FLASH E ANTI-FANTASMA:
-            # Ignora cargas com erro (tempo < 5 min) e calcula a velocidade da carga
             df_hist_limpo = df_historico[(df_historico['TMP APC'] > 5) & (df_historico['PEÇAS'] > 0)].copy()
             df_hist_limpo['VELOCIDADE'] = df_hist_limpo['TMP APC'] / df_hist_limpo['PEÇAS']
-            
-            # Corta fora qualquer carga do passado que foi "rápida demais" (ex: cross-docking)
-            # 0.05 min/peça = 20 peças por minuto. Ninguém confere mais rápido que isso.
             df_hist_limpo = df_hist_limpo[df_hist_limpo['VELOCIDADE'] >= 0.05] 
 
-            # Calcula a taxa global da empresa usando MEDIANA (justiça pura)
             taxa_global_mediana = df_hist_limpo['VELOCIDADE'].median()
             if pd.isna(taxa_global_mediana): taxa_global_mediana = 0.5 
 
-            # --- Tenta Casamento Perfeito: Fornecedor + Linha ---
             df_base_exata = df_hist_limpo[(df_hist_limpo['FORNECEDOR'].str.upper() == forn) & (df_hist_limpo['LINHA'].str.upper() == linha)]
             if not df_base_exata.empty:
                 df_gemeas = df_base_exata[(df_base_exata['PEÇAS'] >= min_pecas) & (df_base_exata['PEÇAS'] <= max_pecas) & (df_base_exata['SKU'] >= min_sku) & (df_base_exata['SKU'] <= max_sku)]
-                # Usa MEDIAN() em vez de mean() pra ignorar absurdos
                 if not df_gemeas.empty: return df_gemeas['TMP APC'].median() 
                 
                 df_primas = df_base_exata[(df_base_exata['PEÇAS'] >= min_pecas) & (df_base_exata['PEÇAS'] <= max_pecas)]
                 if not df_primas.empty: return df_primas['TMP APC'].median()
                 
-                # Se não achar prima nem gêmea, tira a média de velocidade DO FORNECEDOR
                 vel_mediana = df_base_exata['VELOCIDADE'].median()
                 return TEMPO_SETUP + (pecas * vel_mediana)
 
-            # --- Tenta Casamento Amplo: Só pela Linha (Categoria) ---
             df_base_categoria = df_hist_limpo[df_hist_limpo['LINHA'].str.upper() == linha]
             if not df_base_categoria.empty:
                 df_gemeas_cat = df_base_categoria[(df_base_categoria['PEÇAS'] >= min_pecas) & (df_base_categoria['PEÇAS'] <= max_pecas) & (df_base_categoria['SKU'] >= min_sku) & (df_base_categoria['SKU'] <= max_sku)]
@@ -475,10 +456,8 @@ with tab2:
                 vel_mediana_cat = df_base_categoria['VELOCIDADE'].median()
                 return TEMPO_SETUP + (pecas * vel_mediana_cat)
 
-            # Se for uma carga de um produto alienígena que o CD nunca viu
             return TEMPO_SETUP + (pecas * taxa_global_mediana)
 
-        # Atualizando os cálculos com as novas regras
         df_hoje_conf['DURAÇÃO_REAL_MIN'] = df_hoje_conf['DURAÇÃO CARGA'].apply(time_to_mins)
         df_hoje_conf['STATUS_FISICO'] = df_hoje_conf['STATUS_FISICO'].str.strip().str.upper()
         df_hoje_conf['META_TEMPO_MIN'] = df_hoje_conf.apply(lambda row: calcular_meta_inteligente(row, df_hist_conf), axis=1)
@@ -523,13 +502,29 @@ with tab2:
         df_tabela['SKU'] = df_tabela['SKU'].apply(lambda x: f"{int(x)}")
         df_tabela = df_tabela[['AGENDA', 'CONFERENTE', 'CATEGORIA', 'STATUS_FISICO', 'PEÇAS', 'SKU', 'META (Tempo)', 'GASTO (Tempo)', 'PREVISÃO FIM', 'SITUAÇÃO META']]
         
-        def cor_status(val):
-            if '✅' in str(val): return 'color: #065F46; background-color: #D1FAE5; font-weight: 600; border-radius: 4px;'
-            if '🔴' in str(val) or '⚠️' in str(val): return 'color: #991B1B; background-color: #FEE2E2; font-weight: 600; border-radius: 4px;'
-            if '⏳' in str(val): return 'color: #92400E; background-color: #FEF3C7; font-weight: 600; border-radius: 4px;'
-            return ''
+        # --- FUNÇÃO ROBUSTA DE ESTILIZAÇÃO PARA QUALQUER PANDAS ---
+        def estilizar_tabela(df):
+            estilos = pd.DataFrame('', index=df.index, columns=df.columns)
+            
+            cond_verde_meta = df['SITUAÇÃO META'].astype(str).str.contains('✅')
+            cond_verm_meta = df['SITUAÇÃO META'].astype(str).str.contains('🔴|⚠️')
+            cond_amar_meta = df['SITUAÇÃO META'].astype(str).str.contains('⏳')
+            
+            estilos.loc[cond_verde_meta, 'SITUAÇÃO META'] = 'color: #065F46; background-color: #D1FAE5; font-weight: 600; border-radius: 4px;'
+            estilos.loc[cond_verm_meta, 'SITUAÇÃO META'] = 'color: #991B1B; background-color: #FEE2E2; font-weight: 600; border-radius: 4px;'
+            estilos.loc[cond_amar_meta, 'SITUAÇÃO META'] = 'color: #92400E; background-color: #FEF3C7; font-weight: 600; border-radius: 4px;'
+            
+            cond_verde_prev = df['PREVISÃO FIM'].astype(str).str.contains('✅')
+            cond_verm_prev = df['PREVISÃO FIM'].astype(str).str.contains('🔴|⚠️')
+            cond_amar_prev = df['PREVISÃO FIM'].astype(str).str.contains('⏳')
+            
+            estilos.loc[cond_verde_prev, 'PREVISÃO FIM'] = 'color: #065F46; background-color: #D1FAE5; font-weight: 600; border-radius: 4px;'
+            estilos.loc[cond_verm_prev, 'PREVISÃO FIM'] = 'color: #991B1B; background-color: #FEE2E2; font-weight: 600; border-radius: 4px;'
+            estilos.loc[cond_amar_prev, 'PREVISÃO FIM'] = 'color: #92400E; background-color: #FEF3C7; font-weight: 600; border-radius: 4px;'
+            
+            return estilos
 
-        st.dataframe(df_tabela.style.applymap(cor_status, subset=['SITUAÇÃO META', 'PREVISÃO FIM']), use_container_width=True, hide_index=True)
+        st.dataframe(df_tabela.style.apply(estilizar_tabela, axis=None), use_container_width=True, hide_index=True)
 
         st.markdown("<br><br>", unsafe_allow_html=True)
         st.markdown("<div style='background-color: #FFFFFF; padding: 20px; border-radius: 12px; border-left: 4px solid #10B981; box-shadow: 0 4px 6px rgba(0,0,0,0.02);'>", unsafe_allow_html=True)
@@ -657,12 +652,19 @@ with tab3:
                 
                 df_detalhe = df_detalhe[['DATA', 'AGENDA', 'CATEGORIA', 'PEÇAS', 'META (Tempo)', 'REAL (Tempo)', 'Desvio (Minutos)', 'STATUS_REAL']]
                 
-                def cor_status_indiv(val):
-                    if 'NO PRAZO' in str(val): return 'color: #065F46; background-color: #D1FAE5; font-weight: 600;'
-                    if 'ATRASADO' in str(val): return 'color: #991B1B; background-color: #FEE2E2; font-weight: 600;'
-                    return ''
+                # --- FUNÇÃO ROBUSTA DE ESTILIZAÇÃO (Aba 3) ---
+                def estilizar_tabela_indiv(df):
+                    estilos = pd.DataFrame('', index=df.index, columns=df.columns)
+                    
+                    cond_verde = df['STATUS_REAL'].astype(str).str.contains('NO PRAZO')
+                    cond_verm = df['STATUS_REAL'].astype(str).str.contains('ATRASADO')
+                    
+                    estilos.loc[cond_verde, 'STATUS_REAL'] = 'color: #065F46; background-color: #D1FAE5; font-weight: 600;'
+                    estilos.loc[cond_verm, 'STATUS_REAL'] = 'color: #991B1B; background-color: #FEE2E2; font-weight: 600;'
+                    
+                    return estilos
 
-                st.dataframe(df_detalhe.style.applymap(cor_status_indiv, subset=['STATUS_REAL']), use_container_width=True, hide_index=True)
+                st.dataframe(df_detalhe.style.apply(estilizar_tabela_indiv, axis=None), use_container_width=True, hide_index=True)
                 
         else:
             st.info("Nenhuma data selecionada.")
