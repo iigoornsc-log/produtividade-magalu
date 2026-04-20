@@ -596,8 +596,6 @@ with tab1:
             elif isinstance(ev, dict) and "selection" in ev and ev["selection"].get("points"):
                 popup_detalhe_hora(ev["selection"]["points"][0].get("x"), df_armz, data_sel)
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("<div class='bloco-header'>Ranking de Produtividade: Operadores</div>", unsafe_allow_html=True)
         
         # =========================================================================
         # BLOCO 3 (ABA 1): PRODUTIVIDADE DOS OPERADORES DE ARMAZENAGEM (PLACAR)
