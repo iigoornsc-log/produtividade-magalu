@@ -604,75 +604,89 @@ with tab1:
         st.markdown("<div class='bloco-header'>🏆 Placar de Produtividade: Operadores</div>", unsafe_allow_html=True)
         
         if not df_producao_real.empty:
+            # --- CÁLCULO DO TEMPO ENTRE ARMAZENAGENS (CADÊNCIA) ---
+            # Ordenamos para garantir que a diferença de tempo seja cronológica por operador
+            df_cadencia = df_producao_real.sort_values(['OPERADOR', 'DT_ARMAZENAGEM_CALC']).copy()
+            
+            # Calcula a diferença em minutos entre uma bipagem e outra por operador
+            df_cadencia['DIFF_MINS'] = df_cadencia.groupby('OPERADOR')['DT_ARMAZENAGEM_CALC'].diff().dt.total_seconds() / 60.0
+            
+            # Filtro de Sanidade: Intervalos maiores que 45 min são considerados pausas/almoço e ignorados na média de ritmo
+            df_cadencia_limpo = df_cadencia[(df_cadencia['DIFF_MINS'] > 0) & (df_cadencia['DIFF_MINS'] < 45)]
+
+            # Agrupamento para o Ranking
             rank_op = df_producao_real.groupby('OPERADOR').agg(
                 Etiquetas_Armazenadas=('NU_ETIQUETA', 'nunique'),
                 Horas_Trabalhadas=('Hora_Armz', 'nunique'),
-                SLA_Medio=('Tempo_Espera_Minutos', 'mean')
+                SLA_Medio_Doca=('Tempo_Espera_Minutos', 'mean')
             ).reset_index()
             
-            rank_op['Média (Etq/Hora)'] = (rank_op['Etiquetas_Armazenadas'] / rank_op['Horas_Trabalhadas'].replace(0, 1)).round(1)
-            rank_op['Tempo Médio na Doca'] = rank_op['SLA_Medio'].apply(mins_to_text)
+            # Cruzamos com a média de cadência calculada acima
+            media_cadencia = df_cadencia_limpo.groupby('OPERADOR')['DIFF_MINS'].mean().reset_index()
+            media_cadencia.columns = ['OPERADOR', 'Intervalo_Medio']
             
-            # Ordenação do Melhor para o Pior (Foco em Quantidade Guardada)
+            rank_op = pd.merge(rank_op, media_cadencia, on='OPERADOR', how='left')
+            
+            # Cálculos de exibição
+            rank_op['Média (Etq/Hora)'] = (rank_op['Etiquetas_Armazenadas'] / rank_op['Horas_Trabalhadas'].replace(0, 1)).round(1)
+            rank_op['Tempo Médio Doca'] = rank_op['SLA_Medio_Doca'].apply(mins_to_text)
+            rank_op['Ritmo_Bipagem'] = rank_op['Intervalo_Medio'].apply(lambda x: f"{x:.1f} min" if pd.notna(x) else "-")
+            
+            # Ordenação do Melhor para o Pior
             rank_op = rank_op.sort_values(['Etiquetas_Armazenadas', 'Média (Etq/Hora)'], ascending=[False, False]).reset_index(drop=True)
             
-            # CSS COMPLETO COM TOOLTIP (POP-UP)
+            # CSS AJUSTADO PARA 6 COLUNAS
             st.markdown("""
             <style>
             .lb-wrapper { background: rgba(255, 255, 255, 0.85); border: 1px solid rgba(255, 255, 255, 0.4); box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07); backdrop-filter: blur(8px); border-radius: 16px; padding: 25px; margin-top: 15px;}
-            .lb-header-op { display: grid; grid-template-columns: 0.5fr 2.5fr 1.5fr 1.5fr 1.5fr; color: #64748B; font-weight: 800; font-size: 11px; text-transform: uppercase; padding: 0 15px 12px 15px; border-bottom: 2px solid #F1F5F9; margin-bottom: 12px; align-items: center;}
-            .lb-row-op { display: grid; grid-template-columns: 0.5fr 2.5fr 1.5fr 1.5fr 1.5fr; align-items: center; background: #FFFFFF; margin-bottom: 8px; padding: 12px 15px; border-radius: 12px; border: 1px solid #E2E8F0; transition: all 0.2s; border-left: 6px solid transparent;}
+            .lb-header-op { display: grid; grid-template-columns: 0.5fr 2fr 1fr 1fr 1.2fr 1.2fr; color: #64748B; font-weight: 800; font-size: 10px; text-transform: uppercase; padding: 0 15px 12px 15px; border-bottom: 2px solid #F1F5F9; margin-bottom: 12px; align-items: center;}
+            .lb-row-op { display: grid; grid-template-columns: 0.5fr 2fr 1fr 1fr 1.2fr 1.2fr; align-items: center; background: #FFFFFF; margin-bottom: 8px; padding: 12px 15px; border-radius: 12px; border: 1px solid #E2E8F0; transition: all 0.2s; border-left: 6px solid transparent;}
             .lb-row-op:hover { transform: translateX(4px); box-shadow: 0 5px 15px rgba(0,0,0,0.05); }
             .lb-gold { background: linear-gradient(90deg, #FFFBEB 0%, #FFFFFF 30%); border-left-color: #F59E0B; border-color: #FEF3C7;}
             .lb-silver { background: linear-gradient(90deg, #F8FAFC 0%, #FFFFFF 30%); border-left-color: #94A3B8; border-color: #E2E8F0;}
             .lb-bronze { background: linear-gradient(90deg, #FFF7ED 0%, #FFFFFF 30%); border-left-color: #B45309; border-color: #FFEDD5;}
             .lb-danger { background: linear-gradient(90deg, #FEF2F2 0%, #FFFFFF 30%); border-left-color: #EF4444; border-color: #FEE2E2;}
             .lb-rank { font-size: 18px; font-weight: 900; color: #0F172A; }
-            .lb-gold .lb-rank { color: #D97706; }
-            .lb-silver .lb-rank { color: #64748B; }
-            .lb-bronze .lb-rank { color: #92400E; }
-            .lb-danger .lb-rank { color: #DC2626; }
-            .lb-name { font-size: 14px; font-weight: 800; color: #1E293B; display: flex; align-items: center; gap: 8px;}
+            .lb-name { font-size: 13px; font-weight: 800; color: #1E293B; display: flex; align-items: center; gap: 8px;}
             .lb-stat { font-size: 13px; font-weight: 600; color: #475569; }
-            .lb-highlight { background: #F0F9FF; color: #0284C7; padding: 4px 8px; border-radius: 6px; font-weight: 800; border: 1px solid #BAE6FD; display: inline-block; font-size: 12px;}
-            .lb-danger .lb-highlight { background: #FEF2F2; color: #DC2626; border-color: #FECACA; }
-            .lb-gold .lb-highlight { background: #FFFBEB; color: #D97706; border-color: #FDE68A; }
+            .lb-highlight { background: #F0F9FF; color: #0284C7; padding: 4px 8px; border-radius: 6px; font-weight: 800; border: 1px solid #BAE6FD; display: inline-block; font-size: 11px;}
             .lb-tooltip { position: relative; display: inline-block; cursor: help; color: #94A3B8; margin-left: 4px; vertical-align: middle;}
-            .lb-tooltip .lb-tooltiptext { visibility: hidden; width: 240px; background-color: #0F172A; color: #F8FAFC; text-align: left; border-radius: 8px; padding: 12px; position: absolute; z-index: 999; bottom: 130%; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity 0.3s, bottom 0.3s; font-size: 11px; font-weight: 500; text-transform: none; letter-spacing: normal; line-height: 1.4; box-shadow: 0 10px 25px rgba(0,0,0,0.2); border: 1px solid #334155; }
-            .lb-tooltip .lb-tooltiptext::after { content: ""; position: absolute; top: 100%; left: 50%; margin-left: -6px; border-width: 6px; border-style: solid; border-color: #334155 transparent transparent transparent; }
-            .lb-tooltip:hover .lb-tooltiptext { visibility: visible; opacity: 1; bottom: 150%; }
-            .lb-tooltip:hover .icon-MAGALOG { color: #0086FF; }
+            .lb-tooltip .lb-tooltiptext { visibility: hidden; width: 200px; background-color: #0F172A; color: #fff; text-align: center; border-radius: 6px; padding: 8px; position: absolute; z-index: 1; bottom: 125%; left: 50%; margin-left: -100px; opacity: 0; transition: opacity 0.3s; font-size: 11px; font-weight: 400; text-transform: none;}
+            .lb-tooltip:hover .lb-tooltiptext { visibility: visible; opacity: 1; }
             </style>
             """, unsafe_allow_html=True)
 
             html_lb = "<div class='lb-wrapper'>"
             html_lb += "<div class='lb-header-op'>"
             html_lb += "<div>POS</div><div>OPERADOR</div>"
-            html_lb += "<div>ETIQUETAS GUARDADAS <div class='lb-tooltip'><span class='icon-MAGALOG' style='font-size:14px;'>help</span><div class='lb-tooltiptext'>Total de volumes armazenados no dia.</div></div></div>"
-            html_lb += "<div>ETIQUETAS / HORA <div class='lb-tooltip'><span class='icon-MAGALOG' style='font-size:14px;'>help</span><div class='lb-tooltiptext'>Média de armazenagem por hora ativa.</div></div></div>"
-            html_lb += "<div>SLA DA DOCA <div class='lb-tooltip'><span class='icon-MAGALOG' style='font-size:14px;'>help</span><div class='lb-tooltiptext'>Tempo médio que a carga esperou na doca.</div></div></div>"
+            html_lb += "<div>GUARDADAS</div>"
+            html_lb += "<div>VELOC.</div>"
+            html_lb += "<div>SLA DOCA</div>"
+            html_lb += "<div>CADÊNCIA <div class='lb-tooltip'><span class='icon-MAGALOG' style='font-size:14px;'>help</span><div class='lb-tooltiptext'>Tempo médio de espera entre uma armazenagem e outra.</div></div></div>"
             html_lb += "</div>"
 
             total_ops = len(rank_op)
             for idx, row_r in rank_op.iterrows():
                 pos_r = idx + 1
-                # Regra: Ouro, Prata, Bronze pros 3 primeiros. Danger para os 2 últimos (se tiver mais de 5 operadores)
                 css_c = "lb-gold" if pos_r == 1 else "lb-silver" if pos_r == 2 else "lb-bronze" if pos_r == 3 else "lb-danger" if (pos_r >= total_ops - 1 and total_ops >= 5) else ""
                 ic_r = "workspace_premium" if pos_r == 1 else "military_tech" if pos_r <= 3 else "warning" if "danger" in css_c else "person"
                 
+                # Cor dinâmica para a cadência (alerta se o intervalo médio for > 10 min)
+                cor_ritmo = "color: #DC2626;" if (pd.notna(row_r['Intervalo_Medio']) and row_r['Intervalo_Medio'] > 10) else ""
+
                 html_lb += f"<div class='lb-row-op {css_c}'>"
                 html_lb += f"<div class='lb-rank'>{pos_r}º</div>"
                 html_lb += f"<div class='lb-name'><span class='icon-MAGALOG' style='font-size:20px;'>{ic_r}</span> {row_r['OPERADOR']}</div>"
-                html_lb += f"<div class='lb-stat'><span style='font-size: 16px; font-weight: 800; color: #0F172A;'>{int(row_r['Etiquetas_Armazenadas'])}</span></div>"
+                html_lb += f"<div class='lb-stat'><span style='font-weight: 800;'>{int(row_r['Etiquetas_Armazenadas'])}</span></div>"
                 html_lb += f"<div class='lb-stat'><span class='lb-highlight'>{row_r['Média (Etq/Hora)']} etq/h</span></div>"
-                html_lb += f"<div class='lb-stat'>{row_r['Tempo Médio na Doca']}</div>"
+                html_lb += f"<div class='lb-stat'>{row_r['Tempo Médio Doca']}</div>"
+                html_lb += f"<div class='lb-stat' style='font-weight: 700; {cor_ritmo}'>{row_r['Ritmo_Bipagem']}</div>"
                 html_lb += "</div>"
             
             html_lb += "</div>"
-            
             st.markdown(html_lb, unsafe_allow_html=True)
         else:
-            st.info("Nenhuma armazenagem registrada para a equipe selecionada nesta data.")
+            st.info("Nenhuma armazenagem registrada para os filtros selecionados.")
 
 # -------------------------------------------------------------------------
 # ABA 2: CONFERÊNCIA (METAS PREDITIVAS E AUTO-SAVE BLINDADO)
