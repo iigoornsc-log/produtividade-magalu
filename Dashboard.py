@@ -662,7 +662,7 @@ with tab1:
             html_lb += "<div>GUARDADAS</div>"
             html_lb += "<div>VELOC.</div>"
             html_lb += "<div>SLA DOCA</div>"
-            html_lb += "<div>CADÊNCIA <div class='lb-tooltip'><span class='icon-MAGALOG' style='font-size:14px;'>help</span><div class='lb-tooltiptext'>Tempo médio de espera entre uma armazenagem e outra.</div></div></div>"
+            html_lb += "<div>Intervalo entre Armazenagens <div class='lb-tooltip'><span class='icon-MAGALOG' style='font-size:14px;'>help</span><div class='lb-tooltiptext'>Tempo médio de espera entre uma armazenagem e outra.</div></div></div>"
             html_lb += "</div>"
 
             total_ops = len(rank_op)
