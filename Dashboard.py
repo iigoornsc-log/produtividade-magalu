@@ -2,201 +2,58 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import gspread
 from google.oauth2.service_account import Credentials
 import json
 from datetime import datetime
-import time
 
-# ==========================================================
-# 1. CONFIGURAÇÃO DA PÁGINA E CSS (THEME MAGALOG CORPORATIVO)
-# ==========================================================
-st.set_page_config(page_title="MAGALOG | Torre de Controle", page_icon="📦", layout="wide", initial_sidebar_state="expanded")
+# =========================================================================
+# 1. CONFIGURAÇÕES INICIAIS E FRONT-END SÊNIOR (TEMA MAGALU)
+# =========================================================================
+st.set_page_config(page_title="Torre de Controle | Magalu", page_icon="📦", layout="wide")
 
 st.markdown("""
-    <style>
-    /* 1. FONTE PREMIUM E ÍCONES GOOGLE MATERIAL */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-    @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,600,1,0');
-    
-    * { font-family: 'Inter', sans-serif !important; }
-
-    /* Classe para alinhar os ícones no HTML perfeitamente com o texto */
-    .icon-MAGALOG {
-        font-family: 'Material Symbols Rounded' !important;
-        font-variation-settings: 'FILL' 1, 'wght' 600, 'GRAD' 0, 'opsz' 24;
-        font-weight: normal;
-        font-style: normal;
-        letter-spacing: normal;
-        text-transform: none;
-        white-space: nowrap;
-        direction: ltr;
-        -webkit-font-smoothing: antialiased;
-        vertical-align: middle;
-        display: inline-block;
-        line-height: 1;
-        font-size: inherit;
-    }
-
-    /* --- CORREÇÃO DOS ÍCONES DA SIDEBAR E SISTEMA --- */
-    .material-icons, .material-symbols-rounded, [data-testid="stSidebarCollapseButton"] * {
-        font-family: 'Material Symbols Rounded', 'Material Icons', sans-serif !important;
-    }
-
-    /* 2. ANIMAÇÃO RGB LUIZALABS */
-    @keyframes Glow {
-        0% { background-position: 0% 50%; }
-        50% { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
-    }
-
-    /* Linha Tech Animada no Topo da Tela */
-    .stApp::before {
-        content: ""; position: fixed; top: 0; left: 0; right: 0; height: 5px;
-        background: linear-gradient(90deg, #0086FF, #FF007F, #00C853, #0086FF, #FF007F);
-        background-size: 300% 300%;
-        animation: Glow 6s linear infinite;
-        z-index: 999999;
-    }
-
-    /* Fundo da Aplicação (Soft com micro-gradiente) */
-    .stApp {
-        background-color: #F0F4F8;
-        background-image: radial-gradient(circle at 100% 0%, #E2EDF8 0%, transparent 40%);
-    }
-
-    /* 3. TÍTULOS COM DEGRADÊ METÁLICO */
-    .MAGALOG-page-title { 
-        background: linear-gradient(135deg, #0086FF 0%, #001A57 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        font-size: 32px; font-weight: 900; letter-spacing: -1px; margin-bottom: 2px;
-    }
-    .MAGALOG-page-subtitle { color: #64748B; font-size: 15px; font-weight: 500; margin-bottom: 25px; }
-
-    /* 4. ABAS (TABS) CORPORATIVAS */
-    [data-baseweb="tab-list"] {
-        background-color: #FFFFFF;
-        border-radius: 12px;
-        padding: 6px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.04);
-        gap: 8px;
-        margin-bottom: 25px;
-    }
-    button[data-baseweb="tab"] {
-        background-color: transparent !important;
-        border-radius: 8px !important;
-        padding: 12px 24px !important;
-        color: #64748B !important;
-        font-weight: 600 !important;
-        border: none !important;
-        transition: all 0.3s ease !important;
-    }
-    button[data-baseweb="tab"]:hover {
-        background-color: #F1F5F9 !important;
-        color: #0F172A !important;
-    }
-    button[data-baseweb="tab"][aria-selected="true"] {
-        background-color: #0086FF !important;
-        color: #FFFFFF !important;
-        box-shadow: 0 4px 15px rgba(0,134,255,0.35) !important;
-    }
-    [data-baseweb="tab-border"] { display: none; }
-
-    /* 5. RIBBONS ANIMADOS */
-    .MAGALOG-ribbon {
-        background: linear-gradient(90deg, #0086FF, #005BFF, #FF007F, #0086FF);
-        background-size: 300% 300%;
-        animation: Glow 8s ease infinite;
-        color: #FFFFFF; padding: 8px 24px; font-size: 13px; font-weight: 700;
-        border-radius: 0px 8px 8px 0px; margin-bottom: 15px; margin-top: 10px;
-        position: relative; left: -1rem; box-shadow: 0 4px 15px rgba(0,134,255,0.3);
-        text-transform: uppercase; letter-spacing: 1px;
-    }
-
-    /* 6. CARDS GLASSMORPHISM */
-    .MAGALOG-card, div[data-testid="stVerticalBlock"] > div > div[data-testid="stVerticalBlockBorderWrapper"] {
-        background: rgba(255, 255, 255, 0.95) !important;
-        backdrop-filter: blur(10px) !important;
-        border: 1px solid rgba(255,255,255,0.6) !important;
-        border-radius: 16px !important;
-        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.03) !important;
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-        padding: 20px !important;
-    }
-    div[data-testid="stVerticalBlockBorderWrapper"]:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 12px 40px rgba(0, 134, 255, 0.08) !important;
-    }
-
-    /* DATE INPUT SIDEBAR */
-    section[data-testid="stSidebar"] div[data-baseweb="input"] > div {
-        background: #FFFFFF !important; border-radius: 12px !important;
-        border: 1px solid #E2E8F0 !important; min-height: 48px !important; transition: all 0.3s ease !important;
-    }
-    section[data-testid="stSidebar"] div[data-baseweb="input"] > div:focus-within {
-        border-color: #0086FF !important; box-shadow: 0 0 0 3px rgba(0,134,255,0.15) !important;
-    }
-    section[data-testid="stSidebar"] input { color: #0F172A !important; font-weight: 600 !important; }
-    section[data-testid="stSidebar"] svg { color: #0086FF !important; }
-
-    /* CHIPS MULTISELECT */
-    span[data-baseweb="tag"] {
-        background-color: #E6F2FF !important; color: #0086FF !important;
-        border-radius: 8px !important; border: 1px solid #BAE6FD !important;
-        font-weight: 700 !important; padding: 6px 12px !important; margin: 4px 4px 4px 0px !important;
-    }
-    span[data-baseweb="tag"] svg { fill: #0086FF !important; } 
-
-    /* BOTÃO SIDEBAR */
-    section[data-testid="stSidebar"] .stButton>button {
-        background: linear-gradient(135deg, #0086FF 0%, #005BFF 100%); color: #FFFFFF;
-        border: none; border-radius: 12px; font-weight: 700; font-size: 14px;
-        padding: 0.8rem 1rem; box-shadow: 0 6px 20px rgba(0,134,255,0.25); transition: all 0.3s ease;
-    }
-    section[data-testid="stSidebar"] .stButton>button:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0,134,255,0.4); }
-    section[data-testid="stSidebar"] .stButton>button:active { transform: scale(0.97); }
-    
-    /* BOTÃO PRIMARY (Verde) */
-    button[kind="primary"] {
-        background: linear-gradient(135deg, #00C853 0%, #009624 100%) !important; border: none !important; color: white !important; font-weight: 800 !important;
-        border-radius: 10px !important; box-shadow: 0 6px 20px rgba(0,200,83,0.3) !important; transition: all 0.3s ease !important;
-    }
-    button[kind="primary"]:hover { box-shadow: 0 8px 25px rgba(0,200,83,0.5) !important; transform: translateY(-2px) !important; }
-
-    /* SCROLLBAR */
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 10px; }
-    ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
-
-    /* KPI CARDS */
-    .kpi-card { 
-        background: #FFFFFF; border-radius: 16px; padding: 20px 15px; 
-        border: 1px solid #F1F5F9; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
-        margin-bottom: 12px; display: flex; flex-direction: column; 
-        align-items: center; justify-content: center; transition: all 0.3s ease;
-    }
-    .kpi-card:hover { transform: translateY(-4px); box-shadow: 0 12px 30px rgba(0, 134, 255, 0.08); }
-    .kpi-title { color: #64748B; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;}
-    .kpi-value { color: #0F172A; font-size: 24px; font-weight: 900; letter-spacing: -0.5px; }
-
-    /* SIDEBAR E DASHBOARD PREMIUM */
-    section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #082a63 0%, #00153d 100%) !important;
-        border-right: 1px solid rgba(255,255,255,0.08);
-    }
-    section[data-testid="stSidebar"] * { color: #EAF2FF; }
-    section[data-testid="stSidebar"] .stRadio > div { gap: 8px; }
-    section[data-testid="stSidebar"] label[data-baseweb="radio"] {
-        background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 14px; padding: 10px 12px; margin-bottom: 8px; transition: all 0.25s ease;
-    }
-    section[data-testid="stSidebar"] label[data-baseweb="radio"]:hover {
-        background: rgba(255,255,255,0.12); border-color: rgba(85,170,255,0.55);
+<style>
+    /* Reset e Fundo Geral */
+    .stApp { 
+        background-color: #F4F6F9; 
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
     
+    /* Escondendo a marca d'agua do Streamlit para visual mais profissional */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+
+    /* Cards de KPI - Estilo Premium / Neumorphism */
+    .kpi-card {
+        background: #FFFFFF;
+        border-radius: 16px;
+        padding: 24px;
+        box-shadow: 0 10px 25px rgba(0, 134, 255, 0.05), 0 4px 10px rgba(0, 0, 0, 0.03);
+        border: 1px solid #EBF1F5;
+        border-top: 4px solid #0086FF; /* Magalu Blue Padrão */
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        margin-bottom: 24px;
+        position: relative;
+        overflow: hidden;
+    }
+    .kpi-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 35px rgba(0, 134, 255, 0.1), 0 5px 15px rgba(0, 0, 0, 0.05);
+    }
+    .kpi-title { 
+        margin: 0; font-size: 13px; color: #64748B; font-weight: 700; 
+        text-transform: uppercase; letter-spacing: 1px; 
+    }
+    .kpi-value { 
+        margin: 8px 0; font-size: 38px; color: #0F172A; 
+        font-weight: 900; letter-spacing: -1px; line-height: 1.1;
+    }
+    .kpi-subtitle { 
+        margin: 0; font-size: 13px; color: #94A3B8; font-weight: 500; 
+    }
+
     /* Cabeçalhos de Bloco Estilo UI Dashboard Gringo */
     .bloco-header {
         color: #0F172A;
@@ -216,7 +73,29 @@ st.markdown("""
         background-color: #0086FF;
         border-radius: 4px;
     }
-    </style>
+
+    /* Estilizando as Abas Nativas (Tabs) */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 24px;
+        background-color: transparent;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 54px;
+        white-space: pre-wrap;
+        background-color: transparent;
+        border-radius: 8px 8px 0 0;
+        color: #64748B;
+        font-weight: 600;
+        font-size: 16px;
+        padding: 0 16px;
+    }
+    .stTabs [aria-selected="true"] {
+        color: #0086FF !important;
+        border-bottom-color: #0086FF !important;
+        background-color: #ffffff;
+        box-shadow: 0 -4px 10px rgba(0,0,0,0.02);
+    }
+</style>
 """, unsafe_allow_html=True)
 
 def exibir_kpi(titulo, valor, subtitulo="", cor="#0086FF"):
@@ -224,11 +103,11 @@ def exibir_kpi(titulo, valor, subtitulo="", cor="#0086FF"):
     <div class="kpi-card" style="border-top-color: {cor};">
         <p class="kpi-title">{titulo}</p>
         <p class="kpi-value">{valor}</p>
-        <p class="kpi-subtitle" style="color: {cor}; opacity: 0.8; font-size: 11px;">{subtitulo}</p>
+        <p class="kpi-subtitle" style="color: {cor}; opacity: 0.8;">{subtitulo}</p>
     </div>
     """, unsafe_allow_html=True)
 
-# --- FUNÇÕES DE LIMPEZA E BACK-END ---
+# --- BLINDAGEM DE TEXTO E NÚMEROS ---
 def limpa_texto(valor):
     if pd.isna(valor): return ""
     return str(valor).strip().upper()
@@ -264,6 +143,7 @@ def mins_to_text(mins):
     if h > 0: return f"{h}h {m}m"
     return f"{m}m"
 
+# --- GRAVAR NO COFRE ---
 def salvar_historico_fechamento(df_para_salvar):
     try:
         cred_dict = json.loads(st.secrets["google_json"])
@@ -277,9 +157,10 @@ def salvar_historico_fechamento(df_para_salvar):
         st.error(f"Erro ao salvar na planilha: {e}")
         return False
 
-# ==========================================================
+# =========================================================================
 # 2. MOTOR DE DADOS MULTI-PLANILHAS
-# ==========================================================
+# =========================================================================
+
 @st.cache_data(ttl=3) 
 def ler_cofre_vivo():
     try:
@@ -390,7 +271,7 @@ def popup_detalhe_hora(hora, df_base, data_sel):
         st.warning(f"Nenhuma movimentação às {hora}.")
         return
         
-    st.markdown(f"### <span class='icon-MAGALOG'>schedule</span> Resumo das **{hora}**", unsafe_allow_html=True)
+    st.markdown(f"### ⏱️ Resumo das **{hora}**")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Conferidas Aqui", df_conferido['NU_ETIQUETA'].nunique())
     c2.metric("Armazenadas Aqui", df_armazenado['NU_ETIQUETA'].nunique())
@@ -401,36 +282,13 @@ def popup_detalhe_hora(hora, df_base, data_sel):
     st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
 
 # =========================================================================
-# 3. INTERFACE E ABAS PRINCIPAIS (COM SIDEBAR MAGALOG)
+# 3. INTERFACE E ABAS PRINCIPAIS
 # =========================================================================
-st.sidebar.markdown("""
-    <div style="padding: 10px 8px 4px 8px; margin-bottom: 14px;">
-        <div style="background: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05)); border:1px solid rgba(255,255,255,0.10); border-radius: 22px; padding: 18px 16px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);">
-            <div style="font-size: 13px; font-weight: 800; letter-spacing:.08em; text-transform: uppercase; color:#9CC8FF; margin-bottom:8px;">MAGALOG</div>
-            <div style="font-size: 26px; font-weight: 900; line-height:1.0; color:#FFFFFF; margin-bottom:8px;">Torre de Controle</div>
-            <div style="font-size: 13px; color:rgba(255,255,255,0.72);">Operação, equipe e performance logística.</div>
-            <div style="height: 8px; margin-top:14px; border-radius: 999px; background: linear-gradient(90deg, #0086FF, #00D2FF, #FF8A3D, #FF4D6D); background-size:300% 300%; animation: Glow 7s linear infinite;"></div>
-        </div>
-    </div>
-""", unsafe_allow_html=True)
-
-st.sidebar.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-if st.sidebar.button("Sincronizar Data", type="secondary", use_container_width=True):
-    with st.spinner("Puxando dados da base..."):
-        st.cache_data.clear()
-        st.rerun()
-
-st.markdown("""
-    <div class="MAGALOG-hero">
-        <div class="MAGALOG-hero-badge">Plataforma Operacional</div>
-        <div class="MAGALOG-hero-title">Central de Operações Logísticas</div>
-        <div class="MAGALOG-hero-subtitle">Acompanhamento preditivo inteligente de conferência, ranking de equipes e controle da doca de armazenagem.</div>
-    </div>
-""", unsafe_allow_html=True)
-
 df_armz = carregar_dados_armazenagem()
 df_hist_conf, df_hoje_conf = carregar_dados_conferencia()
 df_fechamento = ler_cofre_vivo()
+
+st.markdown("<h1 style='color: #0F172A;'>Central de Operações Logísticas <span style='color: #0086FF;'>Magalu</span></h1>", unsafe_allow_html=True)
 
 tab1, tab2, tab3 = st.tabs(["📦 Torre de Armazenagem (Doca)", "🔎 Torre de Conferência (Metas)", "🏅 Desempenho da Equipe"])
 
@@ -439,29 +297,30 @@ tab1, tab2, tab3 = st.tabs(["📦 Torre de Armazenagem (Doca)", "🔎 Torre de C
 # -------------------------------------------------------------------------
 with tab1:
     if not df_armz.empty:
-        df_armz_filtrado = df_armz[df_armz['SITUACAO'].isin(['23', '25'])]
-        
-        st.sidebar.markdown("### <span class='icon-MAGALOG'>tune</span> Filtros de Análise", unsafe_allow_html=True)
+        st.sidebar.image("https://magalog.com.br/opengraph-image.jpg?fdd536e7d35ec9da", width=250)
+        st.sidebar.markdown("### 🎛️ Painel de Controle")
         
         data_max = df_armz['Data_Conf'].dropna().max()
-        data_sel = st.sidebar.date_input("Data de Análise (Armaz.)", data_max)
+        data_sel = st.sidebar.date_input("🗓️ Data de Análise (Armaz.)", data_max)
         
-        modo_visao = st.sidebar.radio("Modo de Análise da Doca", ["Líquida (Apenas do Dia)", "Global (Incluir Herança)"])
+        modo_visao = st.sidebar.radio("🔎 Modo de Análise", ["Líquida (Apenas do Dia)", "Global (Incluir Herança)"])
         
         fantasmas = ['', 'NAN', 'NONE', 'NULL']
         
         # 1. Base de Entrada (Conferência do Dia)
         df_hoje_c = df_armz[df_armz['Data_Conf'] == data_sel]
         conferentes_validos = sorted([c for c in df_hoje_c['CONFERENTE'].unique() if pd.notna(c) and c not in fantasmas])
-        conf_sel = st.sidebar.multiselect("Equipe de Conferência:", options=conferentes_validos, default=conferentes_validos)
+        conf_sel = st.sidebar.multiselect("📋 Equipe de Conferência:", options=conferentes_validos, default=conferentes_validos)
         
         # 2. Base de Saída (Armazenagem Real Absoluta do Dia)
         df_pura_armz = df_armz[df_armz['Data_Armz'] == data_sel]
         operadores_validos = sorted([op for op in df_pura_armz['OPERADOR'].unique() if pd.notna(op) and op not in fantasmas])
-        op_sel = st.sidebar.multiselect("Equipe de Armazenagem:", options=operadores_validos, default=operadores_validos)
+        op_sel = st.sidebar.multiselect("👥 Equipe de Armazenagem:", options=operadores_validos, default=operadores_validos)
         
         # Produção Absoluta do Operador (IDÊNTICO AO EXCEL: Data + Operador, sem filtro de SITUACAO)
         df_producao_real = df_pura_armz[df_pura_armz['OPERADOR'].isin(op_sel)]
+
+        st.caption(f"Dados atualizados para: **{data_sel.strftime('%d/%m/%Y')}**")
         
         c1, c2, c3, c4 = st.columns(4)
         qtd_etiquetas_armz = df_producao_real['NU_ETIQUETA'].nunique()
@@ -477,10 +336,10 @@ with tab1:
         espera_valida = df_producao_real[df_producao_real['Tempo_Espera_Minutos'] > 0]['Tempo_Espera_Minutos']
         sla_medio = espera_valida.mean() if not espera_valida.empty else 0
         
-        with c1: exibir_kpi("Armazenados", f"{qtd_etiquetas_armz:,.0f}", "Etiquetas Guardadas na Data", "#0086FF")
-        with c2: exibir_kpi("Fila da Doca", f"{qtd_pendentes_doca:,.0f}", "Pendentes de Armazenamento", "#E74C3C")
-        with c3: exibir_kpi("Tempo de Espera", mins_to_text(sla_medio), "SLA Médio na Doca", "#F44336" if sla_medio > 120 else "#10B981")
-        with c4: exibir_kpi("Operadores", str(len(op_sel)), "Quantidade no Dia", "#F59E0B")
+        with c1: exibir_kpi("Armazenados", f"{qtd_etiquetas_armz:,.0f}", "Etiquetas Guardadas", "#0086FF")
+        with c2: exibir_kpi("Fila da Doca", f"{qtd_pendentes_doca:,.0f}", "Etiquetas Pendentes (Sit. 23)", "#E74C3C")
+        with c3: exibir_kpi("Tempo de Espera", mins_to_text(sla_medio), "SLA Médio", "#F44336" if sla_medio > 120 else "#10B981")
+        with c4: exibir_kpi("Operadores", str(len(op_sel)), "Ativos na Análise", "#F59E0B")
 
         col_tit, col_sel = st.columns([7, 3])
         with col_tit: st.markdown("<div class='bloco-header'>Fluxo de Trabalho e Capacidade</div>", unsafe_allow_html=True)
@@ -491,7 +350,7 @@ with tab1:
         
         with col_sel:
             st.markdown("<br>", unsafe_allow_html=True)
-            hora_manual = st.selectbox("Inspecionar Hora:", ["Selecione..."] + todas_horas)
+            hora_manual = st.selectbox("🖱️ Inspecionar Hora Específica:", ["Selecione..."] + todas_horas)
 
         dados_grafico = []
         for hora in todas_horas:
@@ -512,11 +371,10 @@ with tab1:
         df_fluxo = pd.DataFrame(dados_grafico)
 
         if not df_fluxo.empty:
-            st.markdown('<div class="MAGALOG-card">', unsafe_allow_html=True)
             fig_fluxo = go.Figure()
-            fig_fluxo.add_trace(go.Bar(x=df_fluxo['Hora'], y=df_fluxo['Armazenados'], name='Armazenados', marker_color='#0086FF', text=df_fluxo['Armazenados'], textposition='auto'))
-            fig_fluxo.add_trace(go.Bar(x=df_fluxo['Hora'], y=df_fluxo['Conferidos'], name='Conferidos', marker_color='#CBD5E1', text=df_fluxo['Conferidos'], textposition='outside'))
-            fig_fluxo.add_trace(go.Scatter(x=df_fluxo['Hora'], y=df_fluxo['Pendências'], name='Fila Acumulada', mode='lines+markers+text', line=dict(color='#FF3366', width=3), yaxis='y2', text=df_fluxo['Pendências'], textposition='top center'))
+            fig_fluxo.add_trace(go.Bar(x=df_fluxo['Hora'], y=df_fluxo['Armazenados'], name='Armazenados (Produção)', marker_color='#0086FF', text=df_fluxo['Armazenados'], textposition='auto'))
+            fig_fluxo.add_trace(go.Bar(x=df_fluxo['Hora'], y=df_fluxo['Conferidos'], name='Conferidos (Demanda)', marker_color='#94A3B8', text=df_fluxo['Conferidos'], textposition='outside'))
+            fig_fluxo.add_trace(go.Scatter(x=df_fluxo['Hora'], y=df_fluxo['Pendências'], name='Fila Acumulada', mode='lines+markers+text', line=dict(color='#EF4444', width=3), yaxis='y2', text=df_fluxo['Pendências'], textposition='top center'))
             
             fig_fluxo.update_layout(
                 plot_bgcolor='rgba(0,0,0,0)', 
@@ -527,12 +385,10 @@ with tab1:
                 yaxis2=dict(overlaying='y', side='right', showgrid=False), 
                 hovermode="x unified",
                 xaxis=dict(showgrid=False),
-                yaxis=dict(gridcolor='#F1F5F9')
+                yaxis=dict(gridcolor='#E2E8F0')
             )
             
             ev = st.plotly_chart(fig_fluxo, use_container_width=True, on_select="rerun")
-            st.markdown('</div>', unsafe_allow_html=True)
-            
             if hora_manual != "Selecione...": popup_detalhe_hora(hora_manual, df_armz, data_sel)
             elif isinstance(ev, dict) and "selection" in ev and ev["selection"].get("points"):
                 popup_detalhe_hora(ev["selection"]["points"][0].get("x"), df_armz, data_sel)
@@ -541,7 +397,7 @@ with tab1:
         # BLOCO 3 (ABA 1): PRODUTIVIDADE DOS OPERADORES DE ARMAZENAGEM
         # =========================================================================
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("<div class='bloco-header'>Ranking de Produtividade: Operadores</div>", unsafe_allow_html=True)
+        st.markdown("<div class='bloco-header'>🏆 Ranking de Produtividade: Operadores</div>", unsafe_allow_html=True)
         
         if not df_producao_real.empty:
             rank_op = df_producao_real.groupby('OPERADOR').agg(
@@ -567,8 +423,7 @@ with tab1:
 # -------------------------------------------------------------------------
 with tab2:
     if not df_hist_conf.empty and not df_hoje_conf.empty:
-        st.markdown('<div class="MAGALOG-ribbon">Inteligência Preditiva</div>', unsafe_allow_html=True)
-        st.caption("O algoritmo localiza cargas irmãs no histórico para gerar a meta mais justa possível, considerando também tempo de setup.")
+        st.caption("Cálculo preditivo inteligente: O algoritmo localiza cargas irmãs no histórico para gerar a meta mais justa possível.")
         
         def calcular_meta_inteligente(row, df_historico):
             forn = str(row.get('ORIGEM', '')).strip().upper()
@@ -626,11 +481,11 @@ with tab2:
             
         def calcular_situacao_meta(row):
             status = row['STATUS_FISICO']
-            if status == 'OK': return "✅ No Prazo" if row['DURAÇÃO_REAL_MIN'] <= row['META_TEMPO_MIN'] else "🔴 Atrasado (Fin)"
+            if status == 'OK': return "✅ No Prazo" if row['DURAÇÃO_REAL_MIN'] <= row['META_TEMPO_MIN'] else "🔴 Atrasou (Finalizado)"
             else:
-                if row['DURAÇÃO_REAL_MIN'] > row['META_TEMPO_MIN']: return "🔴 Estourado"
+                if row['DURAÇÃO_REAL_MIN'] > row['META_TEMPO_MIN']: return "🔴 Atrasado (Em Processo)"
                 elif status == 'EM PROCESSO': return "⏳ No Ritmo"
-                else: return "⏸️ Aguardando"
+                else: return "⏸️ Aguardando Início"
             
         df_hoje_conf['PREVISÃO FIM'] = df_hoje_conf.apply(calcular_previsao, axis=1)
         df_hoje_conf['SITUAÇÃO META'] = df_hoje_conf.apply(calcular_situacao_meta, axis=1)
@@ -639,12 +494,12 @@ with tab2:
         cargas_totais = len(df_hoje_conf)
         cargas_ok = df_hoje_conf[df_hoje_conf['STATUS_FISICO'] == 'OK'].shape[0]
         cargas_fila = df_hoje_conf[df_hoje_conf['STATUS_FISICO'].isin(['EM DOCA', 'P-EXTERNO'])].shape[0]
-        acertos = df_hoje_conf[df_hoje_conf['SITUAÇÃO META'].isin(['✅ No Prazo', '⏳ No Ritmo', '⏸️ Aguardando'])].shape[0]
+        acertos = df_hoje_conf[df_hoje_conf['SITUAÇÃO META'].isin(['✅ No Prazo', '⏳ No Ritmo', '⏸️ Aguardando Início'])].shape[0]
         perc_acerto = (acertos / cargas_totais) * 100 if cargas_totais > 0 else 0
         
         with c1: exibir_kpi("Agendas do Dia", cargas_totais, "Na grade", "#8B5CF6")
         with c2: exibir_kpi("Finalizadas", cargas_ok, "Cargas Entregues", "#0086FF")
-        with c3: exibir_kpi("Fila Física", cargas_fila, "Doca ou Pátio", "#F59E0B")
+        with c3: exibir_kpi("Fila Física", cargas_fila, "Doca ou Pátio Externo", "#F59E0B")
         with c4: exibir_kpi("Saúde das Metas", f"{perc_acerto:.1f}%", "Aderência", "#10B981" if perc_acerto > 80 else "#EF4444")
         
         st.markdown("<div class='bloco-header'>Despacho de Cargas e Previsão Algorítmica</div>", unsafe_allow_html=True)
@@ -656,7 +511,7 @@ with tab2:
         df_tabela['SKU'] = df_tabela['SKU'].apply(lambda x: f"{int(x)}")
         df_tabela = df_tabela[['AGENDA', 'CONFERENTE', 'CATEGORIA', 'STATUS_FISICO', 'PEÇAS', 'SKU', 'META (Tempo)', 'GASTO (Tempo)', 'PREVISÃO FIM', 'SITUAÇÃO META']]
         
-        # --- ESTILIZAÇÃO ROBUSTA MAGALOG ---
+        # --- FUNÇÃO ROBUSTA DE ESTILIZAÇÃO PARA QUALQUER PANDAS ---
         def estilizar_tabela(df):
             estilos = pd.DataFrame('', index=df.index, columns=df.columns)
             
@@ -664,25 +519,25 @@ with tab2:
             cond_verm_meta = df['SITUAÇÃO META'].astype(str).str.contains('🔴|⚠️')
             cond_amar_meta = df['SITUAÇÃO META'].astype(str).str.contains('⏳')
             
-            estilos.loc[cond_verde_meta, 'SITUAÇÃO META'] = 'color: #065F46; background-color: #D1FAE5; font-weight: 600;'
-            estilos.loc[cond_verm_meta, 'SITUAÇÃO META'] = 'color: #991B1B; background-color: #FEE2E2; font-weight: 600;'
-            estilos.loc[cond_amar_meta, 'SITUAÇÃO META'] = 'color: #92400E; background-color: #FEF3C7; font-weight: 600;'
+            estilos.loc[cond_verde_meta, 'SITUAÇÃO META'] = 'color: #065F46; background-color: #D1FAE5; font-weight: 600; border-radius: 4px;'
+            estilos.loc[cond_verm_meta, 'SITUAÇÃO META'] = 'color: #991B1B; background-color: #FEE2E2; font-weight: 600; border-radius: 4px;'
+            estilos.loc[cond_amar_meta, 'SITUAÇÃO META'] = 'color: #92400E; background-color: #FEF3C7; font-weight: 600; border-radius: 4px;'
             
             cond_verde_prev = df['PREVISÃO FIM'].astype(str).str.contains('✅')
             cond_verm_prev = df['PREVISÃO FIM'].astype(str).str.contains('🔴|⚠️')
             cond_amar_prev = df['PREVISÃO FIM'].astype(str).str.contains('⏳')
             
-            estilos.loc[cond_verde_prev, 'PREVISÃO FIM'] = 'color: #065F46; background-color: #D1FAE5; font-weight: 600;'
-            estilos.loc[cond_verm_prev, 'PREVISÃO FIM'] = 'color: #991B1B; background-color: #FEE2E2; font-weight: 600;'
-            estilos.loc[cond_amar_prev, 'PREVISÃO FIM'] = 'color: #92400E; background-color: #FEF3C7; font-weight: 600;'
+            estilos.loc[cond_verde_prev, 'PREVISÃO FIM'] = 'color: #065F46; background-color: #D1FAE5; font-weight: 600; border-radius: 4px;'
+            estilos.loc[cond_verm_prev, 'PREVISÃO FIM'] = 'color: #991B1B; background-color: #FEE2E2; font-weight: 600; border-radius: 4px;'
+            estilos.loc[cond_amar_prev, 'PREVISÃO FIM'] = 'color: #92400E; background-color: #FEF3C7; font-weight: 600; border-radius: 4px;'
             
             return estilos
 
         st.dataframe(df_tabela.style.apply(estilizar_tabela, axis=None), use_container_width=True, hide_index=True)
 
         st.markdown("<br><br>", unsafe_allow_html=True)
-        st.markdown("<div class='MAGALOG-card' style='border-left: 4px solid #10B981 !important;'>", unsafe_allow_html=True)
-        st.markdown("<h4 style='color: #0F172A; margin-top:0;'><span class='icon-MAGALOG' style='color:#10B981;'>sync</span> Sincronização Contínua (Anti-F5)</h4>", unsafe_allow_html=True)
+        st.markdown("<div style='background-color: #FFFFFF; padding: 20px; border-radius: 12px; border-left: 4px solid #10B981; box-shadow: 0 4px 6px rgba(0,0,0,0.02);'>", unsafe_allow_html=True)
+        st.markdown("### 🔄 Sincronização Contínua (Anti-F5)")
         
         data_hoje_str = agora.strftime('%d/%m/%Y')
         
@@ -700,7 +555,7 @@ with tab2:
         c_sync2.metric("🆕 Novas Cargas na Fila", len(df_para_salvar))
 
         if not df_para_salvar.empty:
-            st.info(f"Foram encontradas {len(df_para_salvar)} novas cargas finalizadas! Salvando no cofre automaticamente...")
+            st.info(f"🚀 Foram encontradas {len(df_para_salvar)} novas cargas finalizadas! Salvando no cofre automaticamente...")
             
             df_export = pd.DataFrame({
                 'DATA': data_hoje_str, 'AGENDA': df_para_salvar['AGENDA'], 'CONFERENTE': df_para_salvar['CONFERENTE'],
@@ -712,11 +567,11 @@ with tab2:
             with st.spinner("Sincronizando Banco de Dados..."):
                 sucesso = salvar_historico_fechamento(df_export)
                 if sucesso:
-                    st.success("Novas cargas sincronizadas com sucesso!")
+                    st.success("✅ Novas cargas sincronizadas com sucesso!")
                     st.cache_data.clear() 
                     st.rerun() 
         else:
-            st.success("O Cofre está 100% sincronizado. Nenhuma carga nova pendente de gravação.")
+            st.success("✅ O Cofre está 100% sincronizado. Nenhuma carga nova pendente de gravação.")
 
         st.markdown("</div>", unsafe_allow_html=True)
     else:
@@ -752,27 +607,24 @@ with tab3:
             
             with col1:
                 st.markdown("<div class='bloco-header'>Top Performers (Aderência)</div>", unsafe_allow_html=True)
-                st.markdown('<div class="MAGALOG-card">', unsafe_allow_html=True)
                 fig_bar = px.bar(ranking, x='CONFERENTE', y='% de Acerto', text_auto='.1f', 
                                  color='% de Acerto', color_continuous_scale='Blues',
                                  labels={'% de Acerto': 'Taxa de Acerto (%)'})
-                fig_bar.update_layout(yaxis=dict(range=[0, 100]), coloraxis_showscale=False, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=10, b=0))
-                st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
-                st.markdown('</div>', unsafe_allow_html=True)
+                fig_bar.update_layout(yaxis=dict(range=[0, 100]), coloraxis_showscale=False, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
+                st.plotly_chart(fig_bar, use_container_width=True)
                 
             with col2:
                 st.markdown("<div class='bloco-header'>Balanço de Tempo (Gargalo vs Ganho)</div>", unsafe_allow_html=True)
-                st.markdown('<div class="MAGALOG-card">', unsafe_allow_html=True)
+                st.caption("Verde = Tempo salvo. Vermelho = Tempo estourado em média.")
                 ranking_desvio = ranking.sort_values('Tempo_Medio_Desvio', ascending=False)
-                cores = ['#FF3366' if val > 0 else '#00C853' for val in ranking_desvio['Tempo_Medio_Desvio']]
+                cores = ['#EF4444' if val > 0 else '#10B981' for val in ranking_desvio['Tempo_Medio_Desvio']]
                 
                 fig_desv = go.Figure(go.Bar(
                     x=ranking_desvio['CONFERENTE'], y=ranking_desvio['Tempo_Medio_Desvio'], 
                     marker_color=cores, text=ranking_desvio['Tempo_Medio_Desvio'].round(1), textposition='auto'
                 ))
-                fig_desv.update_layout(yaxis_title="Minutos (Média de Desvio)", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(l=0, r=0, t=10, b=0))
-                st.plotly_chart(fig_desv, use_container_width=True, config={'displayModeBar': False})
-                st.markdown('</div>', unsafe_allow_html=True)
+                fig_desv.update_layout(yaxis_title="Minutos (Média de Desvio)", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
+                st.plotly_chart(fig_desv, use_container_width=True)
                 
             st.markdown("<div class='bloco-header'>Detalhamento Analítico Geral</div>", unsafe_allow_html=True)
             st.dataframe(ranking[['CONFERENTE', 'Cargas_Feitas', 'No_Prazo', 'Atrasos', '% de Acerto', 'Tempo_Medio_Desvio']].style.format({
@@ -782,7 +634,7 @@ with tab3:
 
             st.markdown("---")
             
-            st.markdown("<div class='bloco-header'>Investigador de Conferente</div>", unsafe_allow_html=True)
+            st.markdown("<div class='bloco-header'>🔍 Investigador de Conferente </div>", unsafe_allow_html=True)
             
             lista_conferentes = ["Selecione um Conferente..."] + sorted(df_f['CONFERENTE'].unique())
             conferente_alvo = st.selectbox("Escolha quem você quer investigar:", lista_conferentes)
@@ -795,11 +647,12 @@ with tab3:
                 qtd_bad = df_individual[df_individual['STATUS_REAL'] == 'ATRASADO'].shape[0]
                 saldo_total_min = df_individual['Desvio (Minutos)'].sum()
                 
-                with c_k1: exibir_kpi("Cargas no Prazo", qtd_ok, "", "#00C853")
-                with c_k2: exibir_kpi("Cargas Estouradas", qtd_bad, "", "#FF3366")
-                with c_k3: exibir_kpi("Balanço Total (Minutos)", f"{saldo_total_min:.1f} min", "", "#0086FF")
+                c_k1.metric("Cargas no Prazo", qtd_ok)
+                c_k2.metric("Cargas Estouradas", qtd_bad)
+                c_k3.metric("Balanço Total (Minutos)", f"{saldo_total_min:.1f} min", 
+                            delta=f"{saldo_total_min:.1f} min", delta_color="inverse")
                 
-                st.markdown(f"<div style='font-weight: 800; color: #0F172A; margin-bottom: 10px;'>Histórico de agendas de {conferente_alvo}</div>", unsafe_allow_html=True)
+                st.markdown(f"**Histórico de agendas de {conferente_alvo} (Ordenadas por Data)**")
                 
                 df_detalhe = df_individual[['DATA', 'AGENDA', 'CATEGORIA', 'PEÇAS', 'META MINUTOS', 'REALIZADO MINUTOS', 'Desvio (Minutos)', 'STATUS_REAL']].copy()
                 df_detalhe['META (Tempo)'] = df_detalhe['META MINUTOS'].apply(mins_to_text)
@@ -825,4 +678,4 @@ with tab3:
         else:
             st.info("Nenhuma data selecionada.")
     else:
-        st.info("Banco de Fechamento Vazio. Os resultados aparecerão após a primeira gravação diária.")
+        st.info("📭 Banco de Fechamento Vazio. Os resultados aparecerão após a primeira gravação diária.")
