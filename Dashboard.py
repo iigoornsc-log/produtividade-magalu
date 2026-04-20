@@ -753,7 +753,7 @@ with tab2:
         with c3: exibir_kpi("Fila Física", cargas_fila, "Doca ou Pátio", "#F59E0B")
         with c4: exibir_kpi("Saúde das Metas", f"{perc_acerto:.1f}%", "Aderência", "#10B981" if perc_acerto > 80 else "#EF4444")
         
-        st.markdown("<h4 style='color: #334155; margin-bottom: 15px; margin-top: 25px;'><span class='icon-MAGALOG'>rocket_launch</span> Despacho de Cargas e Previsão Algorítmica</h4>", unsafe_allow_html=True)
+        st.markdown("<h4 style='color: #334155; margin-bottom: 15px; margin-top: 25px;'><span class='icon-MAGALOG'>rocket_launch</span>Acompanhamento produtividade agendas</h4>", unsafe_allow_html=True)
         
         df_tabela = df_hoje_conf[['AGENDA', 'CONFERENTE', 'CATEGORIA', 'STATUS_FISICO', 'PEÇAS', 'SKU', 'META_TEMPO_MIN', 'DURAÇÃO_REAL_MIN', 'PREVISÃO FIM', 'SITUAÇÃO META']].copy()
         df_tabela['META (Tempo)'] = df_tabela['META_TEMPO_MIN'].apply(mins_to_text)
