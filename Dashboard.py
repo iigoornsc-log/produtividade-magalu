@@ -732,7 +732,7 @@ with tab2:
             
         def calcular_situacao_meta(row):
             status = row['STATUS_FISICO']
-            if status == 'OK': return "NO PRAZO" if row['DURAÇÃO_REAL_MIN'] <= row['META_TEMPO_MIN'] else "ATRASADO (FIN)"
+            if status == 'OK': return "NO PRAZO" if row['DURAÇÃO_REAL_MIN'] <= row['META_TEMPO_MIN'] else "ATRASADO (FIM)"
             else:
                 if row['DURAÇÃO_REAL_MIN'] > row['META_TEMPO_MIN']: return "ESTOURADO"
                 elif status == 'EM PROCESSO': return "NO RITMO"
