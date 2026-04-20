@@ -616,7 +616,7 @@ with tab1:
             # Ordenação do Melhor para o Pior (Foco em Quantidade Guardada)
             rank_op = rank_op.sort_values(['Etiquetas_Armazenadas', 'Média (Etq/Hora)'], ascending=[False, False]).reset_index(drop=True)
             
-            # Reutilizando o CSS de Leaderboard Magalog
+            # CSS COMPLETO COM TOOLTIP (POP-UP)
             st.markdown("""
             <style>
             .lb-wrapper { background: rgba(255, 255, 255, 0.85); border: 1px solid rgba(255, 255, 255, 0.4); box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07); backdrop-filter: blur(8px); border-radius: 16px; padding: 25px; margin-top: 15px;}
@@ -637,6 +637,11 @@ with tab1:
             .lb-highlight { background: #F0F9FF; color: #0284C7; padding: 4px 8px; border-radius: 6px; font-weight: 800; border: 1px solid #BAE6FD; display: inline-block; font-size: 12px;}
             .lb-danger .lb-highlight { background: #FEF2F2; color: #DC2626; border-color: #FECACA; }
             .lb-gold .lb-highlight { background: #FFFBEB; color: #D97706; border-color: #FDE68A; }
+            .lb-tooltip { position: relative; display: inline-block; cursor: help; color: #94A3B8; margin-left: 4px; vertical-align: middle;}
+            .lb-tooltip .lb-tooltiptext { visibility: hidden; width: 240px; background-color: #0F172A; color: #F8FAFC; text-align: left; border-radius: 8px; padding: 12px; position: absolute; z-index: 999; bottom: 130%; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity 0.3s, bottom 0.3s; font-size: 11px; font-weight: 500; text-transform: none; letter-spacing: normal; line-height: 1.4; box-shadow: 0 10px 25px rgba(0,0,0,0.2); border: 1px solid #334155; }
+            .lb-tooltip .lb-tooltiptext::after { content: ""; position: absolute; top: 100%; left: 50%; margin-left: -6px; border-width: 6px; border-style: solid; border-color: #334155 transparent transparent transparent; }
+            .lb-tooltip:hover .lb-tooltiptext { visibility: visible; opacity: 1; bottom: 150%; }
+            .lb-tooltip:hover .icon-MAGALOG { color: #0086FF; }
             </style>
             """, unsafe_allow_html=True)
 
