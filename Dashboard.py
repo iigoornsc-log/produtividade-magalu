@@ -653,7 +653,8 @@ with tab1:
 # ABA 2: CONFERÊNCIA (METAS PREDITIVAS E AUTO-SAVE BLINDADO)
 # -------------------------------------------------------------------------
 with tab2:
-    if not df_hist_conf.empty and not df_hoje_conf.empty:
+    # CORREÇÃO: Removemos a exigência do df_hist_conf estar cheio
+    if not df_hoje_conf.empty:
         st.markdown('<div class="MAGALOG-ribbon">Inteligência Preditiva</div>', unsafe_allow_html=True)
         st.caption("O algoritmo localiza cargas irmãs no histórico para gerar a meta mais justa possível, considerando também tempo de setup.")
         
@@ -664,6 +665,10 @@ with tab2:
             sku = row.get('SKU', 0)
             
             TEMPO_SETUP = 15
+            
+            # BLINDAGEM: Se o histórico estiver vazio, usa taxa padrão de 0.5 min por peça
+            if df_historico.empty or 'TMP APC' not in df_historico.columns or 'PEÇAS' not in df_historico.columns:
+                return TEMPO_SETUP + (pecas * 0.5)
             
             min_pecas, max_pecas = pecas * 0.7, pecas * 1.3
             min_sku, max_sku = min(sku * 0.7, sku - 2), max(sku * 1.3, sku + 2)
@@ -699,8 +704,6 @@ with tab2:
             return TEMPO_SETUP + (pecas * taxa_global_mediana)
 
         df_hoje_conf['DURAÇÃO_REAL_MIN'] = df_hoje_conf['DURAÇÃO CARGA'].apply(time_to_mins)
-        df_hoje_conf['STATUS_FISICO'] = df_hoje_conf['STATUS_FISICO'].str.strip().str.upper()
-        df_hoje_conf['META_TEMPO_MIN'] = df_hoje_conf.apply(lambda row: calcular_meta_inteligente(row, df_hist_conf), axis=1)
         
         agora = pd.Timestamp.now(tz='America/Sao_Paulo')
         
