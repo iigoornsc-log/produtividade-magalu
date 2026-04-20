@@ -183,6 +183,7 @@ def ler_cofre_vivo():
         return pd.DataFrame()
 
 @st.cache_data(ttl=300)
+@st.cache_data(ttl=300)
 def carregar_dados_armazenagem():
     try:
         cred_dict = json.loads(st.secrets["google_json"])
@@ -200,11 +201,14 @@ def carregar_dados_armazenagem():
         df['SITUACAO'] = df['SITUACAO'].apply(limpa_texto)
         df['OPERADOR'] = df['OPERADOR'].apply(limpa_texto)
         df['CONFERENTE'] = df['CONFERENTE'].apply(limpa_texto)
-        df['Data_Ref'] = pd.to_datetime(df['DATA'], format='%d/%m/%Y', errors='coerce').dt.date
+        
+        # A MÁGICA TÁ AQUI: Pegando a Data Real da Conferência e Armazenagem (Cortando a hora)
         df['DT_CONFERENCIA_CALC'] = pd.to_datetime(df['DT_CONFERENCIA'], errors='coerce') 
         df['DT_ARMAZENAGEM_CALC'] = pd.to_datetime(df['DT_ARMAZENAGEM'], format='%d/%m/%Y %H:%M:%S', errors='coerce')
+        
         df['Data_Conf'] = df['DT_CONFERENCIA_CALC'].dt.date
-        df['Data_Armz'] = df['Data_Ref'] 
+        df['Data_Armz'] = df['DT_ARMAZENAGEM_CALC'].dt.date # AGORA ELE LÊ A COLUNA CERTA, E NÃO A DATA DO RELATÓRIO!
+        
         def formata_hora(h):
             if pd.isna(h) or str(h).strip() in ['', 'NAN', 'NULL', 'NONE']: return None
             try: return f"{int(float(h)):02d}:00"
@@ -212,7 +216,7 @@ def carregar_dados_armazenagem():
         df['Hora_Conf'] = df['HORA CONF'].apply(formata_hora)
         df['Hora_Armz'] = df['HORA ARMZ'].apply(formata_hora)
         df['Tempo_Espera_Minutos'] = (df['DT_ARMAZENAGEM_CALC'] - df['DT_CONFERENCIA_CALC']).dt.total_seconds() / 60.0
-        return df.dropna(subset=['Data_Ref'])
+        return df
     except:
         return pd.DataFrame()
 
@@ -387,11 +391,18 @@ with tab1:
             elif isinstance(ev, dict) and "selection" in ev and ev["selection"].get("points"):
                 popup_detalhe_hora(ev["selection"]["points"][0].get("x"), df_base_armz, data_sel)
 
+        # =========================================================================
+        # BLOCO 3 (ABA 1): PRODUTIVIDADE DOS OPERADORES DE ARMAZENAGEM
+        # =========================================================================
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("<div class='bloco-header'>🏆 Ranking de Produtividade: Operadores</div>", unsafe_allow_html=True)
         
-        if not df_producao_equipe.empty:
-            rank_op = df_producao_equipe.groupby('OPERADOR').agg(
+        # AQUI A GENTE BLINDA A CONTAGEM: Pega o df original da armazenagem, 
+        # filtra pelo dia que você selecionou e conta tudo (independente de "Herança")
+        df_ranking_absoluto = df_armz_filtrado[(df_armz_filtrado['Data_Armz'] == data_sel) & (df_armz_filtrado['SITUACAO'] == '25') & (df_armz_filtrado['OPERADOR'].isin(op_sel))].copy()
+
+        if not df_ranking_absoluto.empty:
+            rank_op = df_ranking_absoluto.groupby('OPERADOR').agg(
                 Etiquetas_Armazenadas=('NU_ETIQUETA', 'nunique'),
                 Horas_Trabalhadas=('Hora_Armz', 'nunique'),
                 SLA_Medio=('Tempo_Espera_Minutos', 'mean')
