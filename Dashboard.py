@@ -14,7 +14,13 @@ from datetime import date
 # ==========================================================
 # 1. CONFIGURAÇÃO DA PÁGINA E CSS (THEME MAGALOG CORPORATIVO)
 # ==========================================================
-st.set_page_config(page_title="Torre de produtividade recebimento | MAGALOG", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(
+    page_title="Carga e Descarga | MAGALOG", 
+    page_icon="https://play-lh.googleusercontent.com/WogWYMVkkivEHGyHAZvKtFZ4F3mklNQI-PQ6vsOMdKTSZWqr7etD9XHuPKIY0NkzZqk=w240-h480-rw", # Pode ser qualquer link de imagem
+    layout="wide", 
+    initial_sidebar_state="expanded"
+)
+
 
 st.markdown("""
     <style>
