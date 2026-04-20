@@ -703,8 +703,17 @@ with tab2:
                 
             return TEMPO_SETUP + (pecas * taxa_global_mediana)
 
+        # --- BLINDAGEM CONTRA COLUNAS FALTANTES NA PLANILHA ---
+        if 'DURAÇÃO CARGA' not in df_hoje_conf.columns: 
+            df_hoje_conf['DURAÇÃO CARGA'] = "0"
+        if 'STATUS_FISICO' not in df_hoje_conf.columns: 
+            df_hoje_conf['STATUS_FISICO'] = "AGUARDANDO"
+            
+        # --- APLICAÇÃO DOS CÁLCULOS QUE ESTAVAM FALTANDO ---
         df_hoje_conf['DURAÇÃO_REAL_MIN'] = df_hoje_conf['DURAÇÃO CARGA'].apply(time_to_mins)
-        
+        df_hoje_conf['STATUS_FISICO'] = df_hoje_conf['STATUS_FISICO'].astype(str).str.strip().str.upper()
+        df_hoje_conf['META_TEMPO_MIN'] = df_hoje_conf.apply(lambda row: calcular_meta_inteligente(row, df_hist_conf), axis=1)
+
         agora = pd.Timestamp.now(tz='America/Sao_Paulo')
         
         # CORREÇÃO 2: Limpeza dos Emojis nos DataFrames e Lógica
@@ -824,11 +833,8 @@ with tab2:
             st.success("O Cofre está 100% sincronizado. Nenhuma carga nova pendente de gravação.")
             
         st.markdown("</div>", unsafe_allow_html=True)
-        
-    # AQUI ESTAVA O ERRO! AGORA ALINHADO EXATAMENTE NA MESMA LINHA DO "if not df_hoje_conf.empty:"
     else:
         st.markdown("<div class='MAGALOG-card'><h4 style='color: #F59E0B;'><span class='icon-MAGALOG'>hourglass_empty</span> Nenhuma carga em conferência hoje</h4><p style='color: #64748B; font-size: 13px;'>Aguardando o início da operação no painel 'DIA ATUAL' da planilha.</p></div>", unsafe_allow_html=True)
-
 
 # -------------------------------------------------------------------------
 # ABA 3: DESEMPENHO DA EQUIPE
