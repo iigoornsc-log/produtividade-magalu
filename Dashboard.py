@@ -599,6 +599,12 @@ with tab1:
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("<div class='bloco-header'>Ranking de Produtividade: Operadores</div>", unsafe_allow_html=True)
         
+        # =========================================================================
+        # BLOCO 3 (ABA 1): PRODUTIVIDADE DOS OPERADORES DE ARMAZENAGEM (PLACAR)
+        # =========================================================================
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("<div class='bloco-header'>🏆 Placar de Produtividade: Operadores</div>", unsafe_allow_html=True)
+        
         if not df_producao_real.empty:
             rank_op = df_producao_real.groupby('OPERADOR').agg(
                 Etiquetas_Armazenadas=('NU_ETIQUETA', 'nunique'),
@@ -608,15 +614,62 @@ with tab1:
             
             rank_op['Média (Etq/Hora)'] = (rank_op['Etiquetas_Armazenadas'] / rank_op['Horas_Trabalhadas'].replace(0, 1)).round(1)
             rank_op['Tempo Médio na Doca'] = rank_op['SLA_Medio'].apply(mins_to_text)
-            rank_op = rank_op.sort_values('Etiquetas_Armazenadas', ascending=False)
             
-            df_rank_display = rank_op[['OPERADOR', 'Etiquetas_Armazenadas', 'Média (Etq/Hora)', 'Tempo Médio na Doca']].copy()
-            df_rank_display.columns = ['Operador', 'Total Armazenado', 'Velocidade (Etq/Hora)', 'SLA Médio da Doca']
+            # Ordenação do Melhor para o Pior (Foco em Quantidade Guardada)
+            rank_op = rank_op.sort_values(['Etiquetas_Armazenadas', 'Média (Etq/Hora)'], ascending=[False, False]).reset_index(drop=True)
             
-            st.dataframe(df_rank_display, use_container_width=True, hide_index=True)
+            # Reutilizando o CSS de Leaderboard Magalog
+            st.markdown("""
+            <style>
+            .lb-wrapper { background: rgba(255, 255, 255, 0.85); border: 1px solid rgba(255, 255, 255, 0.4); box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07); backdrop-filter: blur(8px); border-radius: 16px; padding: 25px; margin-top: 15px;}
+            .lb-header-op { display: grid; grid-template-columns: 0.5fr 2.5fr 1.5fr 1.5fr 1.5fr; color: #64748B; font-weight: 800; font-size: 11px; text-transform: uppercase; padding: 0 15px 12px 15px; border-bottom: 2px solid #F1F5F9; margin-bottom: 12px; align-items: center;}
+            .lb-row-op { display: grid; grid-template-columns: 0.5fr 2.5fr 1.5fr 1.5fr 1.5fr; align-items: center; background: #FFFFFF; margin-bottom: 8px; padding: 12px 15px; border-radius: 12px; border: 1px solid #E2E8F0; transition: all 0.2s; border-left: 6px solid transparent;}
+            .lb-row-op:hover { transform: translateX(4px); box-shadow: 0 5px 15px rgba(0,0,0,0.05); }
+            .lb-gold { background: linear-gradient(90deg, #FFFBEB 0%, #FFFFFF 30%); border-left-color: #F59E0B; border-color: #FEF3C7;}
+            .lb-silver { background: linear-gradient(90deg, #F8FAFC 0%, #FFFFFF 30%); border-left-color: #94A3B8; border-color: #E2E8F0;}
+            .lb-bronze { background: linear-gradient(90deg, #FFF7ED 0%, #FFFFFF 30%); border-left-color: #B45309; border-color: #FFEDD5;}
+            .lb-danger { background: linear-gradient(90deg, #FEF2F2 0%, #FFFFFF 30%); border-left-color: #EF4444; border-color: #FEE2E2;}
+            .lb-rank { font-size: 18px; font-weight: 900; color: #0F172A; }
+            .lb-gold .lb-rank { color: #D97706; }
+            .lb-silver .lb-rank { color: #64748B; }
+            .lb-bronze .lb-rank { color: #92400E; }
+            .lb-danger .lb-rank { color: #DC2626; }
+            .lb-name { font-size: 14px; font-weight: 800; color: #1E293B; display: flex; align-items: center; gap: 8px;}
+            .lb-stat { font-size: 13px; font-weight: 600; color: #475569; }
+            .lb-highlight { background: #F0F9FF; color: #0284C7; padding: 4px 8px; border-radius: 6px; font-weight: 800; border: 1px solid #BAE6FD; display: inline-block; font-size: 12px;}
+            .lb-danger .lb-highlight { background: #FEF2F2; color: #DC2626; border-color: #FECACA; }
+            .lb-gold .lb-highlight { background: #FFFBEB; color: #D97706; border-color: #FDE68A; }
+            </style>
+            """, unsafe_allow_html=True)
+
+            html_lb = "<div class='lb-wrapper'>"
+            html_lb += "<div class='lb-header-op'>"
+            html_lb += "<div>POS</div><div>OPERADOR</div>"
+            html_lb += "<div>ETIQUETAS GUARDADAS <div class='lb-tooltip'><span class='icon-MAGALOG' style='font-size:14px;'>help</span><div class='lb-tooltiptext'>Total de volumes armazenados no dia.</div></div></div>"
+            html_lb += "<div>ETIQUETAS / HORA <div class='lb-tooltip'><span class='icon-MAGALOG' style='font-size:14px;'>help</span><div class='lb-tooltiptext'>Média de armazenagem por hora ativa.</div></div></div>"
+            html_lb += "<div>SLA DA DOCA <div class='lb-tooltip'><span class='icon-MAGALOG' style='font-size:14px;'>help</span><div class='lb-tooltiptext'>Tempo médio que a carga esperou na doca.</div></div></div>"
+            html_lb += "</div>"
+
+            total_ops = len(rank_op)
+            for idx, row_r in rank_op.iterrows():
+                pos_r = idx + 1
+                # Regra: Ouro, Prata, Bronze pros 3 primeiros. Danger para os 2 últimos (se tiver mais de 5 operadores)
+                css_c = "lb-gold" if pos_r == 1 else "lb-silver" if pos_r == 2 else "lb-bronze" if pos_r == 3 else "lb-danger" if (pos_r >= total_ops - 1 and total_ops >= 5) else ""
+                ic_r = "workspace_premium" if pos_r == 1 else "military_tech" if pos_r <= 3 else "warning" if "danger" in css_c else "person"
+                
+                html_lb += f"<div class='lb-row-op {css_c}'>"
+                html_lb += f"<div class='lb-rank'>{pos_r}º</div>"
+                html_lb += f"<div class='lb-name'><span class='icon-MAGALOG' style='font-size:20px;'>{ic_r}</span> {row_r['OPERADOR']}</div>"
+                html_lb += f"<div class='lb-stat'><span style='font-size: 16px; font-weight: 800; color: #0F172A;'>{int(row_r['Etiquetas_Armazenadas'])}</span></div>"
+                html_lb += f"<div class='lb-stat'><span class='lb-highlight'>{row_r['Média (Etq/Hora)']} etq/h</span></div>"
+                html_lb += f"<div class='lb-stat'>{row_r['Tempo Médio na Doca']}</div>"
+                html_lb += "</div>"
+            
+            html_lb += "</div>"
+            
+            st.markdown(html_lb, unsafe_allow_html=True)
         else:
             st.info("Nenhuma armazenagem registrada para a equipe selecionada nesta data.")
-    else: st.warning("Sem dados de Armazenagem.")
 
 # -------------------------------------------------------------------------
 # ABA 2: CONFERÊNCIA (METAS PREDITIVAS E AUTO-SAVE BLINDADO)
