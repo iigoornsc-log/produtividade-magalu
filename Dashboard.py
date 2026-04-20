@@ -143,7 +143,6 @@ def mins_to_text(mins):
     if h > 0: return f"{h}h {m}m"
     return f"{m}m"
 
-# --- GRAVAR NO COFRE ---
 def salvar_historico_fechamento(df_para_salvar):
     try:
         cred_dict = json.loads(st.secrets["google_json"])
@@ -183,7 +182,6 @@ def ler_cofre_vivo():
         return pd.DataFrame()
 
 @st.cache_data(ttl=300)
-@st.cache_data(ttl=300)
 def carregar_dados_armazenagem():
     try:
         cred_dict = json.loads(st.secrets["google_json"])
@@ -202,22 +200,26 @@ def carregar_dados_armazenagem():
         df['OPERADOR'] = df['OPERADOR'].apply(limpa_texto)
         df['CONFERENTE'] = df['CONFERENTE'].apply(limpa_texto)
         
-        # A MÁGICA TÁ AQUI: Pegando a Data Real da Conferência e Armazenagem (Cortando a hora)
+        # Datas reais do que aconteceu
         df['DT_CONFERENCIA_CALC'] = pd.to_datetime(df['DT_CONFERENCIA'], errors='coerce') 
         df['DT_ARMAZENAGEM_CALC'] = pd.to_datetime(df['DT_ARMAZENAGEM'], format='%d/%m/%Y %H:%M:%S', errors='coerce')
         
         df['Data_Conf'] = df['DT_CONFERENCIA_CALC'].dt.date
-        df['Data_Armz'] = df['DT_ARMAZENAGEM_CALC'].dt.date # AGORA ELE LÊ A COLUNA CERTA, E NÃO A DATA DO RELATÓRIO!
+        df['Data_Armz'] = df['DT_ARMAZENAGEM_CALC'].dt.date 
         
         def formata_hora(h):
             if pd.isna(h) or str(h).strip() in ['', 'NAN', 'NULL', 'NONE']: return None
             try: return f"{int(float(h)):02d}:00"
             except: return None
+            
         df['Hora_Conf'] = df['HORA CONF'].apply(formata_hora)
         df['Hora_Armz'] = df['HORA ARMZ'].apply(formata_hora)
         df['Tempo_Espera_Minutos'] = (df['DT_ARMAZENAGEM_CALC'] - df['DT_CONFERENCIA_CALC']).dt.total_seconds() / 60.0
-        return df
-    except:
+        
+        df['Data_Ref'] = pd.to_datetime(df['DATA'], format='%d/%m/%Y', errors='coerce').dt.date
+        return df.dropna(subset=['Data_Ref'])
+    except Exception as e:
+        st.error(f"Erro Armazenagem: {e}")
         return pd.DataFrame()
 
 @st.cache_data(ttl=300)
@@ -291,7 +293,7 @@ st.markdown("<h1 style='color: #0F172A;'>Central de Operações Logísticas <spa
 tab1, tab2, tab3 = st.tabs(["📦 Torre de Armazenagem (Doca)", "🔎 Torre de Conferência (Metas)", "🏅 Desempenho da Equipe"])
 
 # -------------------------------------------------------------------------
-# ABA 1: ARMAZENAGEM
+# ABA 1: ARMAZENAGEM (NOVA LÓGICA DE RANKING ABSOLUTO)
 # -------------------------------------------------------------------------
 with tab1:
     if not df_armz.empty:
@@ -305,33 +307,35 @@ with tab1:
         
         modo_visao = st.sidebar.radio("🔎 Modo de Análise", ["Líquida (Apenas do Dia)", "Global (Incluir Herança)"])
         
-        df_hoje_c = df_armz_filtrado[df_armz_filtrado['Data_Conf'] == data_sel]
-        df_hoje_a = df_armz_filtrado[df_armz_filtrado['Data_Armz'] == data_sel]
-        
-        if modo_visao == "Líquida (Apenas do Dia)":
-            df_base_armz = df_hoje_c.copy()
-        else:
-            df_base_armz = pd.concat([df_hoje_c, df_hoje_a]).drop_duplicates(subset=['NU_ETIQUETA'])
-
         fantasmas = ['', 'NAN', 'NONE', 'NULL']
-        conferentes_validos = sorted([c for c in df_base_armz['CONFERENTE'].unique() if pd.notna(c) and c not in fantasmas])
+        
+        # 1. Base de Entrada (Conferência do Dia)
+        df_hoje_c = df_armz_filtrado[df_armz_filtrado['Data_Conf'] == data_sel]
+        conferentes_validos = sorted([c for c in df_hoje_c['CONFERENTE'].unique() if pd.notna(c) and c not in fantasmas])
         conf_sel = st.sidebar.multiselect("📋 Equipe de Conferência:", options=conferentes_validos, default=conferentes_validos)
-        df_base_armz = df_base_armz[df_base_armz['CONFERENTE'].isin(conf_sel)]
-
-        operadores_validos = sorted([op for op in df_base_armz['OPERADOR'].unique() if pd.notna(op) and op not in fantasmas])
+        
+        # 2. Base de Saída (Armazenagem Real do Dia, ignorando a data de conferência)
+        df_hoje_a = df_armz_filtrado[(df_armz_filtrado['Data_Armz'] == data_sel) & (df_armz_filtrado['SITUACAO'] == '25')]
+        operadores_validos = sorted([op for op in df_hoje_a['OPERADOR'].unique() if pd.notna(op) and op not in fantasmas])
         op_sel = st.sidebar.multiselect("👥 Equipe de Armazenagem:", options=operadores_validos, default=operadores_validos)
         
-        df_producao_equipe = df_base_armz[(df_base_armz['Data_Armz'] == data_sel) & (df_base_armz['SITUACAO'] == '25') & (df_base_armz['OPERADOR'].isin(op_sel))]
+        # Produção Absoluta do Operador (A CHAVE DO SUCESSO)
+        df_producao_real = df_hoje_a[df_hoje_a['OPERADOR'].isin(op_sel)]
 
         st.caption(f"Dados atualizados para: **{data_sel.strftime('%d/%m/%Y')}**")
         
         c1, c2, c3, c4 = st.columns(4)
-        qtd_etiquetas_armz = df_producao_equipe['NU_ETIQUETA'].nunique()
-        qtd_pendentes_doca = df_base_armz[df_base_armz['SITUACAO'] == '23']['NU_ETIQUETA'].nunique()
-        if modo_visao == "Global (Incluir Herança)":
-            qtd_pendentes_doca += df_armz_filtrado[(df_armz_filtrado['Data_Conf'] < data_sel) & (df_armz_filtrado['SITUACAO'] == '23') & (df_armz_filtrado['CONFERENTE'].isin(conf_sel))]['NU_ETIQUETA'].nunique()
+        qtd_etiquetas_armz = df_producao_real['NU_ETIQUETA'].nunique()
+        
+        # Fila da Doca respeitando a Visão
+        if modo_visao == "Líquida (Apenas do Dia)":
+            df_fila = df_hoje_c[(df_hoje_c['SITUACAO'] == '23') & (df_hoje_c['CONFERENTE'].isin(conf_sel))]
+        else:
+            df_fila = df_armz_filtrado[(df_armz_filtrado['SITUACAO'] == '23') & (df_armz_filtrado['CONFERENTE'].isin(conf_sel)) & (df_armz_filtrado['Data_Conf'] <= data_sel)]
             
-        espera_valida = df_producao_equipe[df_producao_equipe['Tempo_Espera_Minutos'] > 0]['Tempo_Espera_Minutos']
+        qtd_pendentes_doca = df_fila['NU_ETIQUETA'].nunique()
+            
+        espera_valida = df_producao_real[df_producao_real['Tempo_Espera_Minutos'] > 0]['Tempo_Espera_Minutos']
         sla_medio = espera_valida.mean() if not espera_valida.empty else 0
         
         with c1: exibir_kpi("Armazenados", f"{qtd_etiquetas_armz:,.0f}", "Etiquetas na Situação 25", "#0086FF")
@@ -342,8 +346,8 @@ with tab1:
         col_tit, col_sel = st.columns([7, 3])
         with col_tit: st.markdown("<div class='bloco-header'>Fluxo de Trabalho e Capacidade</div>", unsafe_allow_html=True)
         
-        horas_conf = df_base_armz[df_base_armz['Data_Conf'] == data_sel]['Hora_Conf'].dropna().unique()
-        horas_armz = df_producao_equipe['Hora_Armz'].dropna().unique()
+        horas_conf = df_hoje_c['Hora_Conf'].dropna().unique()
+        horas_armz = df_producao_real['Hora_Armz'].dropna().unique()
         todas_horas = sorted(list(set(list(horas_conf) + list(horas_armz))))
         
         with col_sel:
@@ -352,19 +356,19 @@ with tab1:
 
         dados_grafico = []
         for hora in todas_horas:
-            conf_hora = df_base_armz[(df_base_armz['Data_Conf'] == data_sel) & (df_base_armz['Hora_Conf'] == hora)]['NU_ETIQUETA'].nunique()
-            armz_hora = df_producao_equipe[df_producao_equipe['Hora_Armz'] == hora]['NU_ETIQUETA'].nunique()
+            conf_hora = df_hoje_c[(df_hoje_c['Hora_Conf'] == hora) & (df_hoje_c['CONFERENTE'].isin(conf_sel))]['NU_ETIQUETA'].nunique()
+            armz_hora = df_producao_real[df_producao_real['Hora_Armz'] == hora]['NU_ETIQUETA'].nunique()
             
             if modo_visao == "Líquida (Apenas do Dia)":
-                entrou = df_base_armz[(df_base_armz['Data_Conf'] == data_sel) & (df_base_armz['Hora_Conf'] <= hora)]['NU_ETIQUETA'].nunique()
-                saiu = df_base_armz[(df_base_armz['Data_Conf'] == data_sel) & (df_base_armz['SITUACAO'] == '25') & (df_base_armz['Data_Armz'] == data_sel) & (df_base_armz['Hora_Armz'] <= hora)]['NU_ETIQUETA'].nunique()
-                pendencias = entrou - saiu
+                entrou = df_hoje_c[(df_hoje_c['Hora_Conf'] <= hora) & (df_hoje_c['CONFERENTE'].isin(conf_sel))]['NU_ETIQUETA'].nunique()
+                saiu = df_producao_real[(df_producao_real['Hora_Armz'] <= hora) & (df_producao_real['Data_Conf'] == data_sel)]['NU_ETIQUETA'].nunique()
+                pendencias = max(0, entrou - saiu)
             else:
                 entrou = df_armz_filtrado[(df_armz_filtrado['CONFERENTE'].isin(conf_sel)) & ((df_armz_filtrado['Data_Conf'] < data_sel) | ((df_armz_filtrado['Data_Conf'] == data_sel) & (df_armz_filtrado['Hora_Conf'] <= hora)))]['NU_ETIQUETA'].nunique()
                 saiu = df_armz_filtrado[(df_armz_filtrado['CONFERENTE'].isin(conf_sel)) & (df_armz_filtrado['SITUACAO'] == '25') & ((df_armz_filtrado['Data_Armz'] < data_sel) | ((df_armz_filtrado['Data_Armz'] == data_sel) & (df_armz_filtrado['Hora_Armz'] <= hora)))]['NU_ETIQUETA'].nunique()
-                pendencias = entrou - saiu
+                pendencias = max(0, entrou - saiu)
                 
-            dados_grafico.append({'Hora': hora, 'Armazenados': armz_hora, 'Conferidos': conf_hora, 'Pendências': max(0, pendencias)})
+            dados_grafico.append({'Hora': hora, 'Armazenados': armz_hora, 'Conferidos': conf_hora, 'Pendências': pendencias})
             
         df_fluxo = pd.DataFrame(dados_grafico)
 
@@ -387,9 +391,9 @@ with tab1:
             )
             
             ev = st.plotly_chart(fig_fluxo, use_container_width=True, on_select="rerun")
-            if hora_manual != "Selecione...": popup_detalhe_hora(hora_manual, df_base_armz, data_sel)
+            if hora_manual != "Selecione...": popup_detalhe_hora(hora_manual, df_armz_filtrado, data_sel)
             elif isinstance(ev, dict) and "selection" in ev and ev["selection"].get("points"):
-                popup_detalhe_hora(ev["selection"]["points"][0].get("x"), df_base_armz, data_sel)
+                popup_detalhe_hora(ev["selection"]["points"][0].get("x"), df_armz_filtrado, data_sel)
 
         # =========================================================================
         # BLOCO 3 (ABA 1): PRODUTIVIDADE DOS OPERADORES DE ARMAZENAGEM
@@ -397,12 +401,9 @@ with tab1:
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("<div class='bloco-header'>🏆 Ranking de Produtividade: Operadores</div>", unsafe_allow_html=True)
         
-        # AQUI A GENTE BLINDA A CONTAGEM: Pega o df original da armazenagem, 
-        # filtra pelo dia que você selecionou e conta tudo (independente de "Herança")
-        df_ranking_absoluto = df_armz_filtrado[(df_armz_filtrado['Data_Armz'] == data_sel) & (df_armz_filtrado['SITUACAO'] == '25') & (df_armz_filtrado['OPERADOR'].isin(op_sel))].copy()
-
-        if not df_ranking_absoluto.empty:
-            rank_op = df_ranking_absoluto.groupby('OPERADOR').agg(
+        # Ranking conta TUDO que foi armazenado hoje, ponto final.
+        if not df_producao_real.empty:
+            rank_op = df_producao_real.groupby('OPERADOR').agg(
                 Etiquetas_Armazenadas=('NU_ETIQUETA', 'nunique'),
                 Horas_Trabalhadas=('Hora_Armz', 'nunique'),
                 SLA_Medio=('Tempo_Espera_Minutos', 'mean')
@@ -513,14 +514,11 @@ with tab2:
         df_tabela['SKU'] = df_tabela['SKU'].apply(lambda x: f"{int(x)}")
         df_tabela = df_tabela[['AGENDA', 'CONFERENTE', 'CATEGORIA', 'STATUS_FISICO', 'PEÇAS', 'SKU', 'META (Tempo)', 'GASTO (Tempo)', 'PREVISÃO FIM', 'SITUAÇÃO META']]
         
-        # --- FUNÇÃO ROBUSTA DE ESTILIZAÇÃO PARA QUALQUER PANDAS ---
         def estilizar_tabela(df):
             estilos = pd.DataFrame('', index=df.index, columns=df.columns)
-            
             cond_verde_meta = df['SITUAÇÃO META'].astype(str).str.contains('✅')
             cond_verm_meta = df['SITUAÇÃO META'].astype(str).str.contains('🔴|⚠️')
             cond_amar_meta = df['SITUAÇÃO META'].astype(str).str.contains('⏳')
-            
             estilos.loc[cond_verde_meta, 'SITUAÇÃO META'] = 'color: #065F46; background-color: #D1FAE5; font-weight: 600; border-radius: 4px;'
             estilos.loc[cond_verm_meta, 'SITUAÇÃO META'] = 'color: #991B1B; background-color: #FEE2E2; font-weight: 600; border-radius: 4px;'
             estilos.loc[cond_amar_meta, 'SITUAÇÃO META'] = 'color: #92400E; background-color: #FEF3C7; font-weight: 600; border-radius: 4px;'
@@ -528,11 +526,9 @@ with tab2:
             cond_verde_prev = df['PREVISÃO FIM'].astype(str).str.contains('✅')
             cond_verm_prev = df['PREVISÃO FIM'].astype(str).str.contains('🔴|⚠️')
             cond_amar_prev = df['PREVISÃO FIM'].astype(str).str.contains('⏳')
-            
             estilos.loc[cond_verde_prev, 'PREVISÃO FIM'] = 'color: #065F46; background-color: #D1FAE5; font-weight: 600; border-radius: 4px;'
             estilos.loc[cond_verm_prev, 'PREVISÃO FIM'] = 'color: #991B1B; background-color: #FEE2E2; font-weight: 600; border-radius: 4px;'
             estilos.loc[cond_amar_prev, 'PREVISÃO FIM'] = 'color: #92400E; background-color: #FEF3C7; font-weight: 600; border-radius: 4px;'
-            
             return estilos
 
         st.dataframe(df_tabela.style.apply(estilizar_tabela, axis=None), use_container_width=True, hide_index=True)
@@ -663,16 +659,12 @@ with tab3:
                 
                 df_detalhe = df_detalhe[['DATA', 'AGENDA', 'CATEGORIA', 'PEÇAS', 'META (Tempo)', 'REAL (Tempo)', 'Desvio (Minutos)', 'STATUS_REAL']]
                 
-                # --- FUNÇÃO ROBUSTA DE ESTILIZAÇÃO (Aba 3) ---
                 def estilizar_tabela_indiv(df):
                     estilos = pd.DataFrame('', index=df.index, columns=df.columns)
-                    
                     cond_verde = df['STATUS_REAL'].astype(str).str.contains('NO PRAZO')
                     cond_verm = df['STATUS_REAL'].astype(str).str.contains('ATRASADO')
-                    
                     estilos.loc[cond_verde, 'STATUS_REAL'] = 'color: #065F46; background-color: #D1FAE5; font-weight: 600;'
                     estilos.loc[cond_verm, 'STATUS_REAL'] = 'color: #991B1B; background-color: #FEE2E2; font-weight: 600;'
-                    
                     return estilos
 
                 st.dataframe(df_detalhe.style.apply(estilizar_tabela_indiv, axis=None), use_container_width=True, hide_index=True)
