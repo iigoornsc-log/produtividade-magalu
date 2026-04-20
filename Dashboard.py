@@ -14,7 +14,7 @@ from datetime import date
 # ==========================================================
 # 1. CONFIGURAÇÃO DA PÁGINA E CSS (THEME MAGALOG CORPORATIVO)
 # ==========================================================
-st.set_page_config(page_title="MAGALOG | Torre de produtividade recebimento", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Torre de produtividade recebimento | MAGALOG", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
     <style>
