@@ -14,7 +14,7 @@ from datetime import date
 # ==========================================================
 # 1. CONFIGURAÇÃO DA PÁGINA E CSS (THEME MAGALOG CORPORATIVO)
 # ==========================================================
-st.set_page_config(page_title="MAGALOG | Carga e Descarga", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="MAGALOG | Torre de Controle", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
     <style>
@@ -253,33 +253,16 @@ st.markdown("""
     .MAGALOG-mini-label { color: #64748B; font-size: 11px; text-transform: uppercase; font-weight: 800; letter-spacing: .06em; margin-bottom: 6px; }
     .MAGALOG-mini-value { color: #0F172A; font-size: 28px; font-weight: 900; letter-spacing: -0.8px; margin-bottom: 4px; }
     .MAGALOG-mini-desc { color: #64748B; font-size: 13px; }
-    .bloco-header {
-        color: #0F172A;
-        font-weight: 800;
-        font-size: 24px;
-        margin-top: 40px;
-        margin-bottom: 20px;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-    .bloco-header::before {
-        content: '';
-        display: inline-block;
-        width: 6px;
-        height: 28px;
-        background-color: #0086FF;
-        border-radius: 4px;
-    }
     </style>
 """, unsafe_allow_html=True)
 
+# CORREÇÃO 1: Restaurado o padrão estrutural HTML da função de KPI
 def exibir_kpi(titulo, valor, subtitulo="", cor="#0086FF"):
     st.markdown(f"""
-    <div class="kpi-card" style="border-top-color: {cor};">
-        <p class="kpi-title">{titulo}</p>
-        <p class="kpi-value">{valor}</p>
-        <p class="kpi-subtitle" style="color: {cor}; opacity: 0.8; font-size: 11px;">{subtitulo}</p>
+    <div class="kpi-card" style="border-top: 4px solid {cor};">
+        <div class="kpi-title">{titulo}</div>
+        <div class="kpi-value">{valor}</div>
+        <div style="font-size: 11px; color: {cor}; opacity: 0.8; font-weight: 600; margin-top: 4px;">{subtitulo}</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -434,7 +417,6 @@ def carregar_dados_conferencia():
             
         return df_hist, df_hoje
     except Exception as e:
-        # AQUI O ERRO SERÁ MOSTRADO
         st.error(f"Erro detalhado na conexão da Conferência: {e}")
         return pd.DataFrame(), pd.DataFrame()
 
@@ -457,7 +439,6 @@ def popup_detalhe_hora(hora, df_base, data_sel):
     
     df_exibicao = df_hora[['NU_ETIQUETA', 'SITUACAO', 'PRODUTO', 'CONFERENTE', 'OPERADOR', 'Hora_Conf', 'Hora_Armz']].copy()
     st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
-
 
 # ==========================================================
 # 3. INTERFACE E ABAS PRINCIPAIS (COM SIDEBAR MAGALOG)
@@ -542,7 +523,9 @@ with tab1:
         with c4: exibir_kpi("Operadores", str(len(op_sel)), "Quantidade no Dia", "#F59E0B")
 
         col_tit, col_sel = st.columns([7, 3])
-        with col_tit: st.markdown("<div class='bloco-header'>Fluxo de Trabalho e Capacidade</div>", unsafe_allow_html=True)
+        
+        # CORREÇÃO 2: Padronização dos Títulos de Bloco
+        with col_tit: st.markdown("<h4 style='color: #334155; margin-bottom: 15px; margin-top: 40px;'><span class='icon-MAGALOG'>insights</span> Fluxo de Trabalho e Capacidade</h4>", unsafe_allow_html=True)
         
         horas_conf = df_hoje_c['Hora_Conf'].dropna().unique()
         horas_armz = df_producao_real['Hora_Armz'].dropna().unique()
@@ -569,7 +552,6 @@ with tab1:
             dados_grafico.append({'Hora': hora, 'Armazenados': armz_hora, 'Conferidos': conf_hora, 'Pendências': pendencias})
             
         df_fluxo = pd.DataFrame(dados_grafico)
-
         if not df_fluxo.empty:
             st.markdown('<div class="MAGALOG-card">', unsafe_allow_html=True)
             fig_fluxo = go.Figure()
@@ -595,25 +577,21 @@ with tab1:
             if hora_manual != "Selecione...": popup_detalhe_hora(hora_manual, df_armz, data_sel)
             elif isinstance(ev, dict) and "selection" in ev and ev["selection"].get("points"):
                 popup_detalhe_hora(ev["selection"]["points"][0].get("x"), df_armz, data_sel)
-
         
         # =========================================================================
         # BLOCO 3 (ABA 1): PRODUTIVIDADE DOS OPERADORES DE ARMAZENAGEM (PLACAR)
         # =========================================================================
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("<div class='bloco-header'>🏆 Placar de Produtividade: Operadores</div>", unsafe_allow_html=True)
+        st.markdown("<h4 style='color: #334155; margin-bottom: 15px;'><span class='icon-MAGALOG'>social_leaderboard</span> Placar de Produtividade: Operadores</h4>", unsafe_allow_html=True)
         
         if not df_producao_real.empty:
             # --- CÁLCULO DO TEMPO ENTRE ARMAZENAGENS (CADÊNCIA) ---
-            # Ordenamos para garantir que a diferença de tempo seja cronológica por operador
             df_cadencia = df_producao_real.sort_values(['OPERADOR', 'DT_ARMAZENAGEM_CALC']).copy()
-            
-            # Calcula a diferença em minutos entre uma bipagem e outra por operador
             df_cadencia['DIFF_MINS'] = df_cadencia.groupby('OPERADOR')['DT_ARMAZENAGEM_CALC'].diff().dt.total_seconds() / 60.0
             
             # Filtro de Sanidade: Intervalos maiores que 45 min são considerados pausas/almoço e ignorados na média de ritmo
             df_cadencia_limpo = df_cadencia[(df_cadencia['DIFF_MINS'] > 0) & (df_cadencia['DIFF_MINS'] < 45)]
-
+            
             # Agrupamento para o Ranking
             rank_op = df_producao_real.groupby('OPERADOR').agg(
                 Etiquetas_Armazenadas=('NU_ETIQUETA', 'nunique'),
@@ -621,13 +599,11 @@ with tab1:
                 SLA_Medio_Doca=('Tempo_Espera_Minutos', 'mean')
             ).reset_index()
             
-            # Cruzamos com a média de cadência calculada acima
             media_cadencia = df_cadencia_limpo.groupby('OPERADOR')['DIFF_MINS'].mean().reset_index()
             media_cadencia.columns = ['OPERADOR', 'Intervalo_Medio']
             
             rank_op = pd.merge(rank_op, media_cadencia, on='OPERADOR', how='left')
             
-            # Cálculos de exibição
             rank_op['Média (Etq/Hora)'] = (rank_op['Etiquetas_Armazenadas'] / rank_op['Horas_Trabalhadas'].replace(0, 1)).round(1)
             rank_op['Tempo Médio Doca'] = rank_op['SLA_Medio_Doca'].apply(mins_to_text)
             rank_op['Ritmo_Bipagem'] = rank_op['Intervalo_Medio'].apply(lambda x: f"{x:.1f} min" if pd.notna(x) else "-")
@@ -635,7 +611,6 @@ with tab1:
             # Ordenação do Melhor para o Pior
             rank_op = rank_op.sort_values(['Etiquetas_Armazenadas', 'Média (Etq/Hora)'], ascending=[False, False]).reset_index(drop=True)
             
-            # CSS AJUSTADO PARA 6 COLUNAS
             st.markdown("""
             <style>
             .lb-wrapper { background: rgba(255, 255, 255, 0.85); border: 1px solid rgba(255, 255, 255, 0.4); box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07); backdrop-filter: blur(8px); border-radius: 16px; padding: 25px; margin-top: 15px;}
@@ -664,16 +639,14 @@ with tab1:
             html_lb += "<div>SLA DOCA</div>"
             html_lb += "<div>Intervalo entre Armazenagens <div class='lb-tooltip'><span class='icon-MAGALOG' style='font-size:14px;'>help</span><div class='lb-tooltiptext'>Tempo médio de espera entre uma armazenagem e outra.</div></div></div>"
             html_lb += "</div>"
-
+            
             total_ops = len(rank_op)
             for idx, row_r in rank_op.iterrows():
                 pos_r = idx + 1
                 css_c = "lb-gold" if pos_r == 1 else "lb-silver" if pos_r == 2 else "lb-bronze" if pos_r == 3 else "lb-danger" if (pos_r >= total_ops - 1 and total_ops >= 5) else ""
                 ic_r = "workspace_premium" if pos_r == 1 else "military_tech" if pos_r <= 3 else "warning" if "danger" in css_c else "person"
                 
-                # Cor dinâmica para a cadência (alerta se o intervalo médio for > 10 min)
                 cor_ritmo = "color: #DC2626;" if (pd.notna(row_r['Intervalo_Medio']) and row_r['Intervalo_Medio'] > 10) else ""
-
                 html_lb += f"<div class='lb-row-op {css_c}'>"
                 html_lb += f"<div class='lb-rank'>{pos_r}º</div>"
                 html_lb += f"<div class='lb-name'><span class='icon-MAGALOG' style='font-size:20px;'>{ic_r}</span> {row_r['OPERADOR']}</div>"
@@ -706,15 +679,14 @@ with tab2:
             
             min_pecas, max_pecas = pecas * 0.7, pecas * 1.3
             min_sku, max_sku = min(sku * 0.7, sku - 2), max(sku * 1.3, sku + 2)
-
             df_hist_limpo = df_historico[(df_historico['TMP APC'] > 5) & (df_historico['PEÇAS'] > 0)].copy()
             df_hist_limpo['VELOCIDADE'] = df_hist_limpo['TMP APC'] / df_hist_limpo['PEÇAS']
             df_hist_limpo = df_hist_limpo[df_hist_limpo['VELOCIDADE'] >= 0.05] 
-
             taxa_global_mediana = df_hist_limpo['VELOCIDADE'].median()
+            
             if pd.isna(taxa_global_mediana): taxa_global_mediana = 0.5 
-
             df_base_exata = df_hist_limpo[(df_hist_limpo['FORNECEDOR'].str.upper() == forn) & (df_hist_limpo['LINHA'].str.upper() == linha)]
+            
             if not df_base_exata.empty:
                 df_gemeas = df_base_exata[(df_base_exata['PEÇAS'] >= min_pecas) & (df_base_exata['PEÇAS'] <= max_pecas) & (df_base_exata['SKU'] >= min_sku) & (df_base_exata['SKU'] <= max_sku)]
                 if not df_gemeas.empty: return df_gemeas['TMP APC'].median() 
@@ -724,7 +696,7 @@ with tab2:
                 
                 vel_mediana = df_base_exata['VELOCIDADE'].median()
                 return TEMPO_SETUP + (pecas * vel_mediana)
-
+                
             df_base_categoria = df_hist_limpo[df_hist_limpo['LINHA'].str.upper() == linha]
             if not df_base_categoria.empty:
                 df_gemeas_cat = df_base_categoria[(df_base_categoria['PEÇAS'] >= min_pecas) & (df_base_categoria['PEÇAS'] <= max_pecas) & (df_base_categoria['SKU'] >= min_sku) & (df_base_categoria['SKU'] <= max_sku)]
@@ -735,7 +707,7 @@ with tab2:
                 
                 vel_mediana_cat = df_base_categoria['VELOCIDADE'].median()
                 return TEMPO_SETUP + (pecas * vel_mediana_cat)
-
+                
             return TEMPO_SETUP + (pecas * taxa_global_mediana)
 
         df_hoje_conf['DURAÇÃO_REAL_MIN'] = df_hoje_conf['DURAÇÃO CARGA'].apply(time_to_mins)
@@ -773,7 +745,7 @@ with tab2:
         with c3: exibir_kpi("Fila Física", cargas_fila, "Doca ou Pátio", "#F59E0B")
         with c4: exibir_kpi("Saúde das Metas", f"{perc_acerto:.1f}%", "Aderência", "#10B981" if perc_acerto > 80 else "#EF4444")
         
-        st.markdown("<div class='bloco-header'>Despacho de Cargas e Previsão Algorítmica</div>", unsafe_allow_html=True)
+        st.markdown("<h4 style='color: #334155; margin-bottom: 15px; margin-top: 25px;'><span class='icon-MAGALOG'>rocket_launch</span> Despacho de Cargas e Previsão Algorítmica</h4>", unsafe_allow_html=True)
         
         df_tabela = df_hoje_conf[['AGENDA', 'CONFERENTE', 'CATEGORIA', 'STATUS_FISICO', 'PEÇAS', 'SKU', 'META_TEMPO_MIN', 'DURAÇÃO_REAL_MIN', 'PREVISÃO FIM', 'SITUAÇÃO META']].copy()
         df_tabela['META (Tempo)'] = df_tabela['META_TEMPO_MIN'].apply(mins_to_text)
@@ -819,11 +791,11 @@ with tab2:
             agendas_no_cofre = df_fechamento['AGENDA'].astype(str).tolist()
             
         df_para_salvar = df_hoje_ok[~df_hoje_ok['AGENDA'].astype(str).isin(agendas_no_cofre)].copy()
-
+        
         c_sync1, c_sync2 = st.columns(2)
         c_sync1.metric("📦 Cargas Registradas (Cofre)", len(agendas_no_cofre))
         c_sync2.metric("🆕 Novas Cargas na Fila", len(df_para_salvar))
-
+        
         if not df_para_salvar.empty:
             st.info(f"Foram encontradas {len(df_para_salvar)} novas cargas finalizadas! Salvando no cofre automaticamente...")
             
@@ -842,11 +814,14 @@ with tab2:
                     st.rerun() 
         else:
             st.success("O Cofre está 100% sincronizado. Nenhuma carga nova pendente de gravação.")
-
+            
         st.markdown("</div>", unsafe_allow_html=True)
     else:
         st.warning("⚠️ Planilhas de Conferência desconectadas ou vazias (Verifique o arquivo no Google Sheets).")
 
+# -------------------------------------------------------------------------
+# ABA 3: DESEMPENHO DA EQUIPE
+# -------------------------------------------------------------------------
     with tab3:
         st.caption("Acompanhamento histórico de performance, velocidade e aderência às metas da equipe.")
         
@@ -873,7 +848,7 @@ with tab2:
                 col1, col2 = st.columns(2)
                 
                 with col1:
-                    st.markdown("<div class='bloco-header'>Top Performers (Aderência)</div>", unsafe_allow_html=True)
+                    st.markdown("<h4 style='color: #334155; margin-bottom: 15px; margin-top: 15px;'><span class='icon-MAGALOG'>military_tech</span> Top Performers (Aderência)</h4>", unsafe_allow_html=True)
                     st.markdown('<div class="MAGALOG-card">', unsafe_allow_html=True)
                     fig_bar = px.bar(ranking, x='CONFERENTE', y='% de Acerto', text_auto='.1f', 
                                      color='% de Acerto', color_continuous_scale='Blues',
@@ -883,7 +858,7 @@ with tab2:
                     st.markdown('</div>', unsafe_allow_html=True)
                     
                 with col2:
-                    st.markdown("<div class='bloco-header'>Balanço de Tempo (Gargalo vs Ganho)</div>", unsafe_allow_html=True)
+                    st.markdown("<h4 style='color: #334155; margin-bottom: 15px; margin-top: 15px;'><span class='icon-MAGALOG'>balance</span> Balanço de Tempo (Gargalo vs Ganho)</h4>", unsafe_allow_html=True)
                     st.markdown('<div class="MAGALOG-card">', unsafe_allow_html=True)
                     ranking_desvio = ranking.sort_values('Tempo_Medio_Desvio', ascending=False)
                     cores = ['#FF3366' if val > 0 else '#00C853' for val in ranking_desvio['Tempo_Medio_Desvio']]
@@ -896,15 +871,15 @@ with tab2:
                     st.plotly_chart(fig_desv, use_container_width=True, config={'displayModeBar': False})
                     st.markdown('</div>', unsafe_allow_html=True)
                     
-                st.markdown("<div class='bloco-header'>Detalhamento Analítico Geral</div>", unsafe_allow_html=True)
+                st.markdown("<br><h4 style='color: #334155; margin-bottom: 15px;'><span class='icon-MAGALOG'>analytics</span> Detalhamento Analítico Geral</h4>", unsafe_allow_html=True)
                 st.dataframe(ranking[['CONFERENTE', 'Cargas_Feitas', 'No_Prazo', 'Atrasos', '% de Acerto', 'Tempo_Medio_Desvio']].style.format({
                     '% de Acerto': '{:.1f}%',
                     'Tempo_Medio_Desvio': '{:.1f} min'
                 }), use_container_width=True, hide_index=True)
-
+                
                 st.markdown("---")
                 
-                st.markdown("<div class='bloco-header'>Investigador de Conferente</div>", unsafe_allow_html=True)
+                st.markdown("<h4 style='color: #334155; margin-bottom: 15px;'><span class='icon-MAGALOG'>person_search</span> Investigador de Conferente</h4>", unsafe_allow_html=True)
                 
                 lista_conferentes = ["Selecione um Conferente..."] + sorted(df_f['CONFERENTE'].unique())
                 conferente_alvo = st.selectbox("Escolha quem você quer investigar:", lista_conferentes)
@@ -942,7 +917,6 @@ with tab2:
                         return estilos
 
                     st.dataframe(df_detalhe.style.apply(estilizar_tabela_indiv, axis=None), use_container_width=True, hide_index=True)
-                    
             else:
                 st.info("Nenhuma data selecionada.")
         else:
