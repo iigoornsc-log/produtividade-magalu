@@ -824,8 +824,9 @@ with tab2:
             st.success("O Cofre está 100% sincronizado. Nenhuma carga nova pendente de gravação.")
             
         st.markdown("</div>", unsafe_allow_html=True)
-    else:
-        st.markdown("<div class='MAGALOG-card'><h4 style='color: #DC2626;'><span class='icon-MAGALOG'>warning</span> Planilhas de Conferência desconectadas ou vazias</h4><p style='color: #64748B; font-size: 13px;'>Verifique o arquivo fonte no Google Sheets.</p></div>", unsafe_allow_html=True)
+        else:
+        st.markdown("<div class='MAGALOG-card'><h4 style='color: #F59E0B;'><span class='icon-MAGALOG'>hourglass_empty</span> Nenhuma carga em conferência hoje</h4><p style='color: #64748B; font-size: 13px;'>Aguardando o início da operação no painel 'DIA ATUAL' da planilha.</p></div>", unsafe_allow_html=True)
+
 
 # -------------------------------------------------------------------------
 # ABA 3: DESEMPENHO DA EQUIPE
