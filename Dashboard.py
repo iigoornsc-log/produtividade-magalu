@@ -824,7 +824,9 @@ with tab2:
             st.success("O Cofre está 100% sincronizado. Nenhuma carga nova pendente de gravação.")
             
         st.markdown("</div>", unsafe_allow_html=True)
-        else:
+        
+    # AQUI ESTAVA O ERRO! AGORA ALINHADO EXATAMENTE NA MESMA LINHA DO "if not df_hoje_conf.empty:"
+    else:
         st.markdown("<div class='MAGALOG-card'><h4 style='color: #F59E0B;'><span class='icon-MAGALOG'>hourglass_empty</span> Nenhuma carga em conferência hoje</h4><p style='color: #64748B; font-size: 13px;'>Aguardando o início da operação no painel 'DIA ATUAL' da planilha.</p></div>", unsafe_allow_html=True)
 
 
