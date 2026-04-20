@@ -14,7 +14,7 @@ from datetime import date
 # ==========================================================
 # 1. CONFIGURAÇÃO DA PÁGINA E CSS (THEME MAGALOG CORPORATIVO)
 # ==========================================================
-st.set_page_config(page_title="MAGALOG | Torre de Controle", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="MAGALOG | Torre de produtividade recebimento", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
     <style>
@@ -446,7 +446,7 @@ st.sidebar.markdown("""
     <div style="padding: 10px 8px 4px 8px; margin-bottom: 14px;">
         <div style="background: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.05)); border:1px solid rgba(255,255,255,0.10); border-radius: 22px; padding: 18px 16px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);">
             <div style="font-size: 13px; font-weight: 800; letter-spacing:.08em; text-transform: uppercase; color:#9CC8FF; margin-bottom:8px;">MAGALOG</div>
-            <div style="font-size: 26px; font-weight: 900; line-height:1.0; color:#FFFFFF; margin-bottom:8px;">Torre de Controle</div>
+            <div style="font-size: 26px; font-weight: 900; line-height:1.0; color:#FFFFFF; margin-bottom:8px;">Produtividade recebimento</div>
             <div style="font-size: 13px; color:rgba(255,255,255,0.72);">Operação, equipe e performance logística.</div>
             <div style="height: 8px; margin-top:14px; border-radius: 999px; background: linear-gradient(90deg, #0086FF, #00D2FF, #FF8A3D, #FF4D6D); background-size:300% 300%; animation: Glow 7s linear infinite;"></div>
         </div>
