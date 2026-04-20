@@ -256,7 +256,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# CORREÇÃO 1: Restaurado o padrão estrutural HTML da função de KPI
 def exibir_kpi(titulo, valor, subtitulo="", cor="#0086FF"):
     st.markdown(f"""
     <div class="kpi-card" style="border-top: 4px solid {cor};">
@@ -420,7 +419,7 @@ def carregar_dados_conferencia():
         st.error(f"Erro detalhado na conexão da Conferência: {e}")
         return pd.DataFrame(), pd.DataFrame()
 
-@st.dialog("🔍 RAIO-X DA HORA: DETALHAMENTO", width="large")
+@st.dialog("RAIO-X DA HORA: DETALHAMENTO", width="large")
 def popup_detalhe_hora(hora, df_base, data_sel):
     df_conferido = df_base[(df_base['Hora_Conf'] == hora) & (df_base['Data_Conf'] == data_sel)].copy()
     df_armazenado = df_base[(df_base['Hora_Armz'] == hora) & (df_base['Data_Armz'] == data_sel) & (df_base['SITUACAO'].isin(['25', 'AGRUPADO', 'NORMAL']))].copy()
@@ -472,7 +471,8 @@ df_armz = carregar_dados_armazenagem()
 df_hist_conf, df_hoje_conf = carregar_dados_conferencia()
 df_fechamento = ler_cofre_vivo()
 
-tab1, tab2, tab3 = st.tabs(["📦 Torre de Armazenagem (Doca)", "🔎 Torre de Conferência (Metas)", "🏅 Desempenho da Equipe"])
+# CORREÇÃO 1: Remoção de todos os Emojis nas abas. Texto limpo.
+tab1, tab2, tab3 = st.tabs(["Torre de Armazenagem (Doca)", "Torre de Conferência (Metas)", "Desempenho da Equipe"])
 
 # -------------------------------------------------------------------------
 # ABA 1: ARMAZENAGEM (LÓGICA DE RANKING ABSOLUTO)
@@ -490,23 +490,19 @@ with tab1:
         
         fantasmas = ['', 'NAN', 'NONE', 'NULL']
         
-        # 1. Base de Entrada (Conferência do Dia)
         df_hoje_c = df_armz[df_armz['Data_Conf'] == data_sel]
         conferentes_validos = sorted([c for c in df_hoje_c['CONFERENTE'].unique() if pd.notna(c) and c not in fantasmas])
         conf_sel = st.sidebar.multiselect("Equipe de Conferência:", options=conferentes_validos, default=conferentes_validos)
         
-        # 2. Base de Saída (Armazenagem Real Absoluta do Dia)
         df_pura_armz = df_armz[df_armz['Data_Armz'] == data_sel]
         operadores_validos = sorted([op for op in df_pura_armz['OPERADOR'].unique() if pd.notna(op) and op not in fantasmas])
         op_sel = st.sidebar.multiselect("Equipe de Armazenagem:", options=operadores_validos, default=operadores_validos)
         
-        # Produção Absoluta do Operador (IDÊNTICO AO EXCEL: Data + Operador, sem filtro de SITUACAO)
         df_producao_real = df_pura_armz[df_pura_armz['OPERADOR'].isin(op_sel)]
         
         c1, c2, c3, c4 = st.columns(4)
         qtd_etiquetas_armz = df_producao_real['NU_ETIQUETA'].nunique()
         
-        # Fila da Doca respeitando a Visão (Apenas Pendentes = 23)
         if modo_visao == "Líquida (Apenas do Dia)":
             df_fila = df_hoje_c[(df_hoje_c['SITUACAO'] == '23') & (df_hoje_c['CONFERENTE'].isin(conf_sel))]
         else:
@@ -524,7 +520,6 @@ with tab1:
 
         col_tit, col_sel = st.columns([7, 3])
         
-        # CORREÇÃO 2: Padronização dos Títulos de Bloco
         with col_tit: st.markdown("<h4 style='color: #334155; margin-bottom: 15px; margin-top: 40px;'><span class='icon-MAGALOG'>insights</span> Fluxo de Trabalho e Capacidade</h4>", unsafe_allow_html=True)
         
         horas_conf = df_hoje_c['Hora_Conf'].dropna().unique()
@@ -578,21 +573,15 @@ with tab1:
             elif isinstance(ev, dict) and "selection" in ev and ev["selection"].get("points"):
                 popup_detalhe_hora(ev["selection"]["points"][0].get("x"), df_armz, data_sel)
         
-        # =========================================================================
-        # BLOCO 3 (ABA 1): PRODUTIVIDADE DOS OPERADORES DE ARMAZENAGEM (PLACAR)
-        # =========================================================================
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("<h4 style='color: #334155; margin-bottom: 15px;'><span class='icon-MAGALOG'>social_leaderboard</span> Placar de Produtividade: Operadores</h4>", unsafe_allow_html=True)
         
         if not df_producao_real.empty:
-            # --- CÁLCULO DO TEMPO ENTRE ARMAZENAGENS (CADÊNCIA) ---
             df_cadencia = df_producao_real.sort_values(['OPERADOR', 'DT_ARMAZENAGEM_CALC']).copy()
             df_cadencia['DIFF_MINS'] = df_cadencia.groupby('OPERADOR')['DT_ARMAZENAGEM_CALC'].diff().dt.total_seconds() / 60.0
             
-            # Filtro de Sanidade: Intervalos maiores que 45 min são considerados pausas/almoço e ignorados na média de ritmo
             df_cadencia_limpo = df_cadencia[(df_cadencia['DIFF_MINS'] > 0) & (df_cadencia['DIFF_MINS'] < 45)]
             
-            # Agrupamento para o Ranking
             rank_op = df_producao_real.groupby('OPERADOR').agg(
                 Etiquetas_Armazenadas=('NU_ETIQUETA', 'nunique'),
                 Horas_Trabalhadas=('Hora_Armz', 'nunique'),
@@ -608,7 +597,6 @@ with tab1:
             rank_op['Tempo Médio Doca'] = rank_op['SLA_Medio_Doca'].apply(mins_to_text)
             rank_op['Ritmo_Bipagem'] = rank_op['Intervalo_Medio'].apply(lambda x: f"{x:.1f} min" if pd.notna(x) else "-")
             
-            # Ordenação do Melhor para o Pior
             rank_op = rank_op.sort_values(['Etiquetas_Armazenadas', 'Média (Etq/Hora)'], ascending=[False, False]).reset_index(drop=True)
             
             st.markdown("""
@@ -715,20 +703,22 @@ with tab2:
         df_hoje_conf['META_TEMPO_MIN'] = df_hoje_conf.apply(lambda row: calcular_meta_inteligente(row, df_hist_conf), axis=1)
         
         agora = pd.Timestamp.now(tz='America/Sao_Paulo')
+        
+        # CORREÇÃO 2: Limpeza dos Emojis nos DataFrames e Lógica
         def calcular_previsao(row):
             status = row['STATUS_FISICO']
-            if status == 'OK': return "✅ Finalizado"
+            if status == 'OK': return "FINALIZADO"
             restante = row['META_TEMPO_MIN'] - row['DURAÇÃO_REAL_MIN']
-            if restante < 0: return "⚠️ Estourou"
+            if restante < 0: return "ESTOUROU"
             return (agora + pd.Timedelta(minutes=restante)).strftime("%H:%M")
             
         def calcular_situacao_meta(row):
             status = row['STATUS_FISICO']
-            if status == 'OK': return "✅ No Prazo" if row['DURAÇÃO_REAL_MIN'] <= row['META_TEMPO_MIN'] else "🔴 Atrasado (Fin)"
+            if status == 'OK': return "NO PRAZO" if row['DURAÇÃO_REAL_MIN'] <= row['META_TEMPO_MIN'] else "ATRASADO (FIN)"
             else:
-                if row['DURAÇÃO_REAL_MIN'] > row['META_TEMPO_MIN']: return "🔴 Estourado"
-                elif status == 'EM PROCESSO': return "⏳ No Ritmo"
-                else: return "⏸️ Aguardando"
+                if row['DURAÇÃO_REAL_MIN'] > row['META_TEMPO_MIN']: return "ESTOURADO"
+                elif status == 'EM PROCESSO': return "NO RITMO"
+                else: return "AGUARDANDO"
             
         df_hoje_conf['PREVISÃO FIM'] = df_hoje_conf.apply(calcular_previsao, axis=1)
         df_hoje_conf['SITUAÇÃO META'] = df_hoje_conf.apply(calcular_situacao_meta, axis=1)
@@ -737,7 +727,7 @@ with tab2:
         cargas_totais = len(df_hoje_conf)
         cargas_ok = df_hoje_conf[df_hoje_conf['STATUS_FISICO'] == 'OK'].shape[0]
         cargas_fila = df_hoje_conf[df_hoje_conf['STATUS_FISICO'].isin(['EM DOCA', 'P-EXTERNO'])].shape[0]
-        acertos = df_hoje_conf[df_hoje_conf['SITUAÇÃO META'].isin(['✅ No Prazo', '⏳ No Ritmo', '⏸️ Aguardando'])].shape[0]
+        acertos = df_hoje_conf[df_hoje_conf['SITUAÇÃO META'].isin(['NO PRAZO', 'NO RITMO', 'AGUARDANDO'])].shape[0]
         perc_acerto = (acertos / cargas_totais) * 100 if cargas_totais > 0 else 0
         
         with c1: exibir_kpi("Agendas do Dia", cargas_totais, "Na grade", "#8B5CF6")
@@ -757,17 +747,18 @@ with tab2:
         def estilizar_tabela(df):
             estilos = pd.DataFrame('', index=df.index, columns=df.columns)
             
-            cond_verde_meta = df['SITUAÇÃO META'].astype(str).str.contains('✅')
-            cond_verm_meta = df['SITUAÇÃO META'].astype(str).str.contains('🔴|⚠️')
-            cond_amar_meta = df['SITUAÇÃO META'].astype(str).str.contains('⏳')
+            # Formatação baseada na string exata (Sem Emoji)
+            cond_verde_meta = df['SITUAÇÃO META'].astype(str).str.contains('NO PRAZO')
+            cond_verm_meta = df['SITUAÇÃO META'].astype(str).str.contains('ATRASADO|ESTOURADO')
+            cond_amar_meta = df['SITUAÇÃO META'].astype(str).str.contains('NO RITMO')
             
             estilos.loc[cond_verde_meta, 'SITUAÇÃO META'] = 'color: #065F46; background-color: #D1FAE5; font-weight: 600;'
             estilos.loc[cond_verm_meta, 'SITUAÇÃO META'] = 'color: #991B1B; background-color: #FEE2E2; font-weight: 600;'
             estilos.loc[cond_amar_meta, 'SITUAÇÃO META'] = 'color: #92400E; background-color: #FEF3C7; font-weight: 600;'
             
-            cond_verde_prev = df['PREVISÃO FIM'].astype(str).str.contains('✅')
-            cond_verm_prev = df['PREVISÃO FIM'].astype(str).str.contains('🔴|⚠️')
-            cond_amar_prev = df['PREVISÃO FIM'].astype(str).str.contains('⏳')
+            cond_verde_prev = df['PREVISÃO FIM'].astype(str).str.contains('FINALIZADO')
+            cond_verm_prev = df['PREVISÃO FIM'].astype(str).str.contains('ESTOUROU')
+            cond_amar_prev = df['PREVISÃO FIM'].astype(str).str.contains(':') # Quando é horário HH:MM
             
             estilos.loc[cond_verde_prev, 'PREVISÃO FIM'] = 'color: #065F46; background-color: #D1FAE5; font-weight: 600;'
             estilos.loc[cond_verm_prev, 'PREVISÃO FIM'] = 'color: #991B1B; background-color: #FEE2E2; font-weight: 600;'
@@ -792,9 +783,23 @@ with tab2:
             
         df_para_salvar = df_hoje_ok[~df_hoje_ok['AGENDA'].astype(str).isin(agendas_no_cofre)].copy()
         
+        # CORREÇÃO 3: Troca do st.metric() feio com emoji por Cards HTML customizados
         c_sync1, c_sync2 = st.columns(2)
-        c_sync1.metric("📦 Cargas Registradas (Cofre)", len(agendas_no_cofre))
-        c_sync2.metric("🆕 Novas Cargas na Fila", len(df_para_salvar))
+        with c_sync1:
+            st.markdown(f"""
+            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 15px;">
+                <div style="font-size: 11px; color: #64748B; font-weight: 800; text-transform: uppercase;"><span class='icon-MAGALOG' style='vertical-align: middle; font-size: 16px; margin-right: 4px;'>inventory_2</span> Cargas Registradas (Cofre)</div>
+                <div style="font-size: 24px; font-weight: 900; color: #0F172A; margin-top: 4px;">{len(agendas_no_cofre)}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        with c_sync2:
+            st.markdown(f"""
+            <div style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 12px; padding: 15px;">
+                <div style="font-size: 11px; color: #64748B; font-weight: 800; text-transform: uppercase;"><span class='icon-MAGALOG' style='vertical-align: middle; font-size: 16px; margin-right: 4px; color: #F59E0B;'>notification_important</span> Novas Cargas na Fila</div>
+                <div style="font-size: 24px; font-weight: 900; color: #F59E0B; margin-top: 4px;">{len(df_para_salvar)}</div>
+            </div>
+            """, unsafe_allow_html=True)
         
         if not df_para_salvar.empty:
             st.info(f"Foram encontradas {len(df_para_salvar)} novas cargas finalizadas! Salvando no cofre automaticamente...")
@@ -803,7 +808,7 @@ with tab2:
                 'DATA': data_hoje_str, 'AGENDA': df_para_salvar['AGENDA'], 'CONFERENTE': df_para_salvar['CONFERENTE'],
                 'CATEGORIA': df_para_salvar['CATEGORIA'], 'PEÇAS': df_para_salvar['PEÇAS'],
                 'META MINUTOS': df_para_salvar['META_TEMPO_MIN'].round(2), 'REALIZADO MINUTOS': df_para_salvar['DURAÇÃO_REAL_MIN'].round(2),
-                'RESULTADO': df_para_salvar['SITUAÇÃO META'].apply(lambda x: 'NO PRAZO' if '✅' in x else 'ATRASADO')
+                'RESULTADO': df_para_salvar['SITUAÇÃO META'].apply(lambda x: 'NO PRAZO' if 'NO PRAZO' in x else 'ATRASADO')
             })
             
             with st.spinner("Sincronizando Banco de Dados..."):
@@ -817,7 +822,7 @@ with tab2:
             
         st.markdown("</div>", unsafe_allow_html=True)
     else:
-        st.warning("⚠️ Planilhas de Conferência desconectadas ou vazias (Verifique o arquivo no Google Sheets).")
+        st.markdown("<div class='MAGALOG-card'><h4 style='color: #DC2626;'><span class='icon-MAGALOG'>warning</span> Planilhas de Conferência desconectadas ou vazias</h4><p style='color: #64748B; font-size: 13px;'>Verifique o arquivo fonte no Google Sheets.</p></div>", unsafe_allow_html=True)
 
 # -------------------------------------------------------------------------
 # ABA 3: DESEMPENHO DA EQUIPE
